@@ -53,7 +53,6 @@ jobs:
       - name: Package plugin
         run: |
           PLUGIN_NAME="CapyDeploy"
-          VERSION=$(node -p "require('./package.json').version")
           BUILD_DIR="/tmp/decky-build/$PLUGIN_NAME"
           mkdir -p "$BUILD_DIR"
 
@@ -69,15 +68,14 @@ jobs:
           if [ -f "LICENSE" ]; then cp LICENSE "$BUILD_DIR/"; fi
 
           cd /tmp/decky-build
-          zip -r "$GITHUB_WORKSPACE/CapyDeploy-v${VERSION}.zip" "$PLUGIN_NAME"
+          zip -r "$GITHUB_WORKSPACE/CapyDeploy.zip" "$PLUGIN_NAME"
 
       - name: Upload release asset
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          VERSION=$(node -p "require('./package.json').version")
           gh release upload "${{ needs.release-please.outputs.tag_name }}" \
-            "CapyDeploy-v${VERSION}.zip" \
+            "CapyDeploy.zip" \
             --clobber
 
   store-submit:
