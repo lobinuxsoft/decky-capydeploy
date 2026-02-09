@@ -52,7 +52,7 @@ A [Decky Loader](https://decky.xyz/) plugin that acts as a CapyDeploy Agent insi
 
 ### Manual Installation
 
-1. Download the latest `CapyDeploy-Decky.zip` from [CapyDeploy releases](https://github.com/lobinuxsoft/capydeploy/releases)
+1. Download the latest [`CapyDeploy.zip`](https://github.com/lobinuxsoft/decky-capydeploy/releases/latest/download/CapyDeploy.zip) from [releases](https://github.com/lobinuxsoft/decky-capydeploy/releases)
 2. Extract to `~/homebrew/plugins/`
 3. Restart Decky Loader
 
