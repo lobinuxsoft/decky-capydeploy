@@ -110,14 +110,23 @@ jobs:
           TAG="${{ needs.release-please.outputs.tag_name }}"
           VERSION="${{ needs.release-please.outputs.version }}"
 
-          git submodule update --init plugins/CapyDeploy
+          if [ -d "plugins/CapyDeploy" ] && git submodule status plugins/CapyDeploy &>/dev/null; then
+            # Existing submodule — update it
+            git submodule update --init plugins/CapyDeploy
+            cd plugins/CapyDeploy
+            git fetch origin
+            git checkout "$TAG"
+            cd ../..
+          else
+            # First time — add as new submodule
+            git submodule add https://github.com/lobinuxsoft/decky-capydeploy.git plugins/CapyDeploy
+            cd plugins/CapyDeploy
+            git fetch origin
+            git checkout "$TAG"
+            cd ../..
+          fi
 
-          cd plugins/CapyDeploy
-          git fetch origin
-          git checkout "$TAG"
-          cd ../..
-
-          git add plugins/CapyDeploy
+          git add plugins/CapyDeploy .gitmodules
           git commit -m "feat: update CapyDeploy to ${TAG}"
 
       - name: Push and create PR
