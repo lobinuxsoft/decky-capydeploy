@@ -1,0 +1,67 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  frontend:
+    name: Frontend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install pnpm
+        run: npm install -g pnpm@9
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: TypeScript check
+        run: npx tsc --noEmit --skipLibCheck
+
+      - name: Build
+        run: pnpm run build
+
+      - name: Verify dist output
+        run: |
+          if [ ! -f "dist/index.js" ]; then
+            echo "ERROR: dist/index.js not found. Build failed?"
+            exit 1
+          fi
+          echo "Frontend build OK ($(wc -c < dist/index.js) bytes)"
+
+  python:
+    name: Python
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Syntax check
+        run: |
+          for pyfile in main.py steam_utils.py mdns_service.py pairing.py upload.py artwork.py ws_server.py; do
+            python3 -m py_compile "$pyfile"
+          done
+          echo "All Python files OK"
+
+      - name: Verify py_modules
+        run: |
+          if [ ! -d "py_modules/websockets" ] || [ ! -d "py_modules/zeroconf" ] || [ ! -d "py_modules/vdf" ]; then
+            echo "ERROR: py_modules/ missing required packages"
+            exit 1
+          fi
+          echo "py_modules OK"

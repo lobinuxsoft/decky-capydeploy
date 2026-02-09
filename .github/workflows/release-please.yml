@@ -15,6 +15,7 @@ jobs:
     outputs:
       release_created: ${{ steps.release.outputs.release_created }}
       tag_name: ${{ steps.release.outputs.tag_name }}
+      version: ${{ steps.release.outputs.version }}
     steps:
       - uses: googleapis/release-please-action@v4
         id: release
@@ -78,3 +79,90 @@ jobs:
           gh release upload "${{ needs.release-please.outputs.tag_name }}" \
             "CapyDeploy-v${VERSION}.zip" \
             --clobber
+
+  store-submit:
+    name: Submit to Decky Plugin Store
+    needs: [release-please, build-plugin]
+    if: needs.release-please.outputs.release_created == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone plugin database fork
+        env:
+          GH_TOKEN: ${{ secrets.STORE_SUBMIT_TOKEN }}
+        run: |
+          git clone https://x-access-token:${GH_TOKEN}@github.com/lobinuxsoft/decky-plugin-database.git db
+          cd db
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Sync fork with upstream
+        working-directory: db
+        env:
+          GH_TOKEN: ${{ secrets.STORE_SUBMIT_TOKEN }}
+        run: |
+          git remote add upstream https://github.com/SteamDeckHomebrew/decky-plugin-database.git
+          git fetch upstream main
+          git reset --hard upstream/main
+
+      - name: Update submodule to new tag
+        working-directory: db
+        run: |
+          TAG="${{ needs.release-please.outputs.tag_name }}"
+          VERSION="${{ needs.release-please.outputs.version }}"
+
+          git submodule update --init plugins/CapyDeploy
+
+          cd plugins/CapyDeploy
+          git fetch origin
+          git checkout "$TAG"
+          cd ../..
+
+          git add plugins/CapyDeploy
+          git commit -m "feat: update CapyDeploy to ${TAG}"
+
+      - name: Push and create PR
+        working-directory: db
+        env:
+          GH_TOKEN: ${{ secrets.STORE_SUBMIT_TOKEN }}
+        run: |
+          TAG="${{ needs.release-please.outputs.tag_name }}"
+          VERSION="${{ needs.release-please.outputs.version }}"
+          BRANCH="update-capydeploy-${VERSION}"
+
+          git checkout -b "$BRANCH"
+          git push -u origin "$BRANCH" --force
+
+          gh pr create \
+            --repo SteamDeckHomebrew/decky-plugin-database \
+            --base main \
+            --head "lobinuxsoft:${BRANCH}" \
+            --title "Update CapyDeploy to ${TAG}" \
+            --body "$(cat <<EOF
+          # Update CapyDeploy to ${TAG}
+
+          Automated update of the CapyDeploy plugin submodule to ${TAG}.
+
+          **Changelog:** https://github.com/lobinuxsoft/decky-capydeploy/releases/tag/${TAG}
+
+          ## Task Checklist
+
+          ### Developer
+
+          - [x] I am the original author or an authorized maintainer of this plugin.
+          - [x] I have updated my plugin's \`package.json\` version.
+
+          ### Plugin
+
+          - [x] I have verified that my plugin works properly on the Stable and Beta update channels of SteamOS.
+
+          ### Community
+
+          - [ ] I have tested and left feedback on two other [pull requests][pulls] for new or updating plugins.
+
+          ## Testing
+
+          - [ ] Tested by a third party on SteamOS Stable or Beta update channel.
+
+          [pulls]: https://github.com/steamdeckHomebrew/decky-plugin-database/pulls?q=is%3Apr+is%3Aopen+sort%3Acreated-desc+-status%3Afailure+-draft%3Atrue+-author%3A%40me
+          EOF
+          )"
