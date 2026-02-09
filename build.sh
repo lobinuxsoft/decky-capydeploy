@@ -6,8 +6,12 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
-# Project directories
-ROOT_DIR="$(cd ../../.. && pwd)"
+# Project directories — detect monorepo (submodule) or standalone
+if [ -f "../../../VERSION" ]; then
+    ROOT_DIR="$(cd ../../.. && pwd)"
+else
+    ROOT_DIR="$SCRIPT_DIR"
+fi
 DIST_DIR="$ROOT_DIR/dist"
 
 PLUGIN_NAME="CapyDeploy"
@@ -87,9 +91,11 @@ if [ -d "assets" ]; then
     cp -r assets "$BUILD_DIR/"
 fi
 
-# Copy LICENSE from root
-if [ -f "../../LICENSE" ]; then
-    cp "../../LICENSE" "$BUILD_DIR/"
+# Copy LICENSE (local first, then monorepo root)
+if [ -f "LICENSE" ]; then
+    cp "LICENSE" "$BUILD_DIR/"
+elif [ -f "../../../LICENSE" ]; then
+    cp "../../../LICENSE" "$BUILD_DIR/"
 fi
 
 # Create ZIP
