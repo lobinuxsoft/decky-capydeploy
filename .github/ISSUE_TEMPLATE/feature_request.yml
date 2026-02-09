@@ -1,0 +1,73 @@
+name: Feature Request
+description: Suggest a new feature or enhancement for the Decky plugin
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for suggesting a feature! If this affects the overall CapyDeploy ecosystem (Hub, protocol, etc.), please open the request in the [main project](https://github.com/lobinuxsoft/capydeploy/issues) instead.
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority (your opinion)
+      description: How important is this feature to you?
+      options:
+        - Nice to have
+        - Would improve my workflow
+        - Important for my use case
+        - Blocking my use case
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem Statement
+      description: What problem does this feature solve?
+      placeholder: I'm always frustrated when...
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed Solution
+      description: How would you like this to work?
+      placeholder: It would be great if...
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: Any other solutions or workarounds you've considered?
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional Context
+      description: Screenshots, mockups, or links to similar features
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Checklist
+      options:
+        - label: I have searched existing issues to ensure this is not a duplicate
+          required: true
+        - label: I am willing to submit a PR to implement this feature
+          required: false
+
+  - type: markdown
+    attributes:
+      value: |
+        ---
+        **Want to implement this feature?** Great! Please:
+        1. Wait for the issue to be discussed and approved
+        2. Create a branch: `feature/issue-XX-short-description`
+        3. Submit a PR targeting `main`
+
+        See [CONTRIBUTING.md](https://github.com/lobinuxsoft/decky-capydeploy/blob/main/CONTRIBUTING.md) for details.

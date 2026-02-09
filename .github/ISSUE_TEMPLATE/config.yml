@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: CapyDeploy Hub / Desktop Agent Issues
+    url: https://github.com/lobinuxsoft/capydeploy/issues
+    about: For bugs or features related to the Hub or Desktop Agent, use the main project
+  - name: Questions & Help
+    url: https://github.com/lobinuxsoft/capydeploy/discussions/categories/q-a
+    about: Ask questions and get help from the community
+  - name: Ideas & Feedback
+    url: https://github.com/lobinuxsoft/capydeploy/discussions/categories/ideas
+    about: Share ideas and feedback before creating a formal feature request
