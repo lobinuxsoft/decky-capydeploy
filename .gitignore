@@ -13,7 +13,7 @@ out/
 __pycache__/
 *.py[cod]
 .venv/
-py_modules/
+# py_modules/ — committed for Decky Plugin Store (CI doesn't run pip install)
 
 # IDE
 .idea/
