@@ -16,6 +16,24 @@ MAX_BUFFER_SIZE = 200
 MAX_BATCH_SIZE = 50
 FLUSH_INTERVAL = 0.5  # 500ms
 
+# Log level bitmask constants (must match pkg/protocol/messages.go).
+LOG_LEVEL_LOG = 1
+LOG_LEVEL_WARN = 2
+LOG_LEVEL_ERROR = 4
+LOG_LEVEL_INFO = 8
+LOG_LEVEL_DEBUG = 16
+LOG_LEVEL_DEFAULT = LOG_LEVEL_LOG | LOG_LEVEL_WARN | LOG_LEVEL_ERROR | LOG_LEVEL_INFO  # 15
+
+_LEVEL_BITS: dict[str, int] = {
+    "log": LOG_LEVEL_LOG,
+    "warn": LOG_LEVEL_WARN,
+    "warning": LOG_LEVEL_WARN,
+    "error": LOG_LEVEL_ERROR,
+    "info": LOG_LEVEL_INFO,
+    "debug": LOG_LEVEL_DEBUG,
+    "verbose": LOG_LEVEL_DEBUG,
+}
+
 
 class ConsoleLogCollector:
     """Buffers console log entries and flushes them in batches."""
@@ -26,6 +44,14 @@ class ConsoleLogCollector:
         self._buffer: list[dict] = []
         self._dropped: int = 0
         self._lock = asyncio.Lock()
+        self._level_mask: int = LOG_LEVEL_DEFAULT
+
+    @property
+    def level_mask(self) -> int:
+        return self._level_mask
+
+    def set_level_mask(self, mask: int) -> None:
+        self._level_mask = mask
 
     def start(self, send_fn: Callable[[dict], Awaitable[None]]) -> None:
         """Start the flush loop."""
@@ -54,6 +80,10 @@ class ConsoleLogCollector:
                   url: str = "", line: int = 0,
                   segments: list | None = None) -> None:
         """Add a log entry to the buffer (called from frontend JS hook)."""
+        bit = _LEVEL_BITS.get(level, 0)
+        if bit == 0 or (self._level_mask & bit) == 0:
+            return
+
         entry = {
             "timestamp": int(time.time() * 1000),
             "level": level,

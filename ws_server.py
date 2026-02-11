@@ -165,6 +165,8 @@ class WebSocketServer:
                         await self.handle_delete_game(websocket, msg_id, payload)
                     elif msg_type == "restart_steam":
                         await self.handle_restart_steam(websocket, msg_id)
+                    elif msg_type == "set_console_log_filter":
+                        await self.handle_set_console_log_filter(websocket, msg_id, payload)
                     else:
                         decky.logger.warning(f"Unknown message type: {msg_type}")
 
@@ -696,6 +698,14 @@ class WebSocketServer:
 
     # ── Console Log ────────────────────────────────────────────────────────
 
+    async def handle_set_console_log_filter(self, websocket, msg_id: str, payload: dict) -> None:
+        """Handle set_console_log_filter: update log level bitmask."""
+        mask = payload.get("levelMask", 15)
+        if self.plugin.console_log:
+            self.plugin.console_log.set_level_mask(mask)
+        decky.logger.info(f"Console log filter updated: mask=0x{mask:02x}")
+        await self.send(websocket, msg_id, "set_console_log_filter", {"levelMask": mask})
+
     def start_console_log(self) -> None:
         """Start sending console log data to the connected Hub."""
         if not self.connected_hub or not self.plugin.console_log:
@@ -723,11 +733,15 @@ class WebSocketServer:
         """Notify the Hub about console log enabled/disabled changes."""
         if not self.connected_hub or not self._send_queue:
             return
+        level_mask = 15  # default
+        if self.plugin.console_log:
+            level_mask = self.plugin.console_log.level_mask
         msg = {
             "id": str(uuid.uuid4()),
             "type": "console_log_status",
             "payload": {
                 "enabled": self.plugin.settings.getSetting("console_log_enabled", False),
+                "levelMask": level_mask,
             },
         }
         await self._send_queue.put(json.dumps(msg))
