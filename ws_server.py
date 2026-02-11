@@ -189,6 +189,8 @@ class WebSocketServer:
             # Cleanup orphaned uploads from this connection
             await self._cleanup_orphaned_uploads()
 
+            self._pending_artwork.clear()
+
             if self.connected_hub and self.connected_hub.get("id") == hub_id:
                 self.stop_telemetry()
                 self.connected_hub = None

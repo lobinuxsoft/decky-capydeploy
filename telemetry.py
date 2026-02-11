@@ -39,6 +39,8 @@ class TelemetryCollector:
         self._power_cap_path: Optional[str] = None
         self._power_avg_path: Optional[str] = None
         self._fan_path: Optional[str] = None
+        self._battery_path: Optional[str] = None
+        self._cpu_freq_paths: list[str] = []
         self._paths_resolved: bool = False
 
     def start(self, interval: float, send_fn: Callable[[dict], Awaitable[None]]) -> None:
@@ -146,6 +148,16 @@ class TelemetryCollector:
                     self._vram_used_path = vram_used
                 break
 
+        # Battery
+        bats = glob.glob("/sys/class/power_supply/BAT*")
+        if bats:
+            self._battery_path = bats[0]
+
+        # CPU frequency paths
+        self._cpu_freq_paths = glob.glob(
+            "/sys/devices/system/cpu/cpu[0-9]*/cpufreq/scaling_cur_freq"
+        )
+
         self._paths_resolved = True
 
     # ── Collect all metrics ──────────────────────────────────────────────────
@@ -218,7 +230,7 @@ class TelemetryCollector:
         # Frequency (average across all cores)
         try:
             freqs = []
-            for path in glob.glob("/sys/devices/system/cpu/cpu[0-9]*/cpufreq/scaling_cur_freq"):
+            for path in self._cpu_freq_paths:
                 val = _read_int(path)
                 if val is not None:
                     freqs.append(val)
@@ -337,13 +349,11 @@ class TelemetryCollector:
     # ── Battery ───────────────────────────────────────────────────────────────
 
     def _read_battery(self) -> Optional[dict]:
-        bats = glob.glob("/sys/class/power_supply/BAT*")
-        if not bats:
+        if not self._battery_path:
             return None
-        bat = bats[0]
         try:
-            capacity = _read_int(os.path.join(bat, "capacity"))
-            status = _read_file(os.path.join(bat, "status")).strip()
+            capacity = _read_int(os.path.join(self._battery_path, "capacity"))
+            status = _read_file(os.path.join(self._battery_path, "status")).strip()
             if capacity is not None:
                 return {"capacity": capacity, "status": status}
         except Exception:
