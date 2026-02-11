@@ -167,6 +167,8 @@ class WebSocketServer:
                         await self.handle_restart_steam(websocket, msg_id)
                     elif msg_type == "set_console_log_filter":
                         await self.handle_set_console_log_filter(websocket, msg_id, payload)
+                    elif msg_type == "set_console_log_enabled":
+                        await self.handle_set_console_log_enabled(websocket, msg_id, payload)
                     else:
                         decky.logger.warning(f"Unknown message type: {msg_type}")
 
@@ -705,6 +707,13 @@ class WebSocketServer:
             self.plugin.console_log.set_level_mask(mask)
         decky.logger.info(f"Console log filter updated: mask=0x{mask:02x}")
         await self.send(websocket, msg_id, "set_console_log_filter", {"levelMask": mask})
+
+    async def handle_set_console_log_enabled(self, websocket, msg_id: str, payload: dict) -> None:
+        """Handle set_console_log_enabled: toggle console log streaming remotely."""
+        enabled = payload.get("enabled", False)
+        await self.plugin.set_console_log_enabled(enabled)
+        decky.logger.info(f"Console log enabled (remote): {enabled}")
+        await self.send(websocket, msg_id, "set_console_log_enabled", {"enabled": enabled})
 
     def start_console_log(self) -> None:
         """Start sending console log data to the connected Hub."""
