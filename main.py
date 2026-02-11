@@ -35,6 +35,11 @@ from upload import UploadSession
 from artwork import download_artwork, set_shortcut_icon, set_shortcut_icon_from_url
 from ws_server import WebSocketServer
 
+try:
+    from telemetry import TelemetryCollector
+except ImportError:
+    TelemetryCollector = None  # type: ignore
+
 def _read_version() -> str:
     """Read version from package.json at plugin directory."""
     try:
@@ -53,6 +58,7 @@ class Plugin:
     pairing: PairingManager
     ws_server: WebSocketServer
     mdns_service: Optional[MDNSService]
+    telemetry: TelemetryCollector
     agent_id: str
     agent_name: str
     accept_connections: bool
@@ -76,6 +82,7 @@ class Plugin:
         self.pairing = PairingManager(self.settings)
         self.ws_server = WebSocketServer(self)
         self.mdns_service = None
+        self.telemetry = TelemetryCollector() if TelemetryCollector else None
 
         # Clean stale event queues from previous sessions
         for key in list(self.settings.settings.keys()):
@@ -117,6 +124,8 @@ class Plugin:
 
     async def _unload(self):
         """Called when the plugin is unloaded."""
+        if self.telemetry:
+            self.telemetry.stop()
         if self.mdns_service:
             self.mdns_service.stop()
             self.mdns_service = None
@@ -188,6 +197,8 @@ class Plugin:
             "version": PLUGIN_VERSION,
             "port": self.ws_server.actual_port,
             "ip": get_local_ip(),
+            "telemetryEnabled": self.settings.getSetting("telemetry_enabled", False),
+            "telemetryInterval": self.settings.getSetting("telemetry_interval", 2),
         }
 
     async def get_event(self, event_name: str) -> Optional[dict]:
@@ -214,6 +225,33 @@ class Plugin:
         self.install_path = path
         self.settings.setSetting("install_path", path)
         os.makedirs(expand_path(path), exist_ok=True)
+
+    async def set_telemetry_enabled(self, enabled=False):
+        """Enable or disable telemetry sending."""
+        decky.logger.info(f"set_telemetry_enabled: {enabled}")
+        self.settings.setSetting("telemetry_enabled", enabled)
+        if enabled and self.ws_server.connected_hub:
+            interval = self.settings.getSetting("telemetry_interval", 2)
+            self.ws_server.start_telemetry(interval)
+        else:
+            self.ws_server.stop_telemetry()
+        await self.ws_server.send_telemetry_status()
+
+    async def set_telemetry_interval(self, seconds=2):
+        """Set telemetry send interval in seconds."""
+        seconds = max(1, min(int(seconds), 10))
+        decky.logger.info(f"set_telemetry_interval: {seconds}s")
+        self.settings.setSetting("telemetry_interval", seconds)
+        if self.telemetry and self.telemetry.running:
+            self.telemetry.update_interval(seconds)
+        await self.ws_server.send_telemetry_status()
+
+    async def get_telemetry_settings(self):
+        """Get current telemetry settings."""
+        return {
+            "enabled": self.settings.getSetting("telemetry_enabled", False),
+            "interval": self.settings.getSetting("telemetry_interval", 2),
+        }
 
     async def log_info(self, message: str):
         """Log an info message."""

@@ -16,6 +16,8 @@ export interface AgentStatus {
   version: string;
   port: number;
   ip: string;
+  telemetryEnabled: boolean;
+  telemetryInterval: number;
 }
 
 interface ArtworkAsset {
@@ -43,6 +45,8 @@ export interface UseAgentReturn {
   refreshStatus: () => Promise<void>;
   pairingCode: string | null;
   setPairingCode: (code: string | null) => void;
+  setTelemetryEnabled: (enabled: boolean) => Promise<void>;
+  setTelemetryInterval: (seconds: number) => Promise<void>;
 }
 
 export function useAgent(): UseAgentReturn {
@@ -70,6 +74,24 @@ export function useAgent(): UseAgentReturn {
     }
   }, [refreshStatus]);
 
+  const setTelemetryEnabled = useCallback(async (value: boolean) => {
+    try {
+      await call<[boolean], void>("set_telemetry_enabled", value);
+      await refreshStatus();
+    } catch (e) {
+      console.error("Failed to set telemetry enabled:", e);
+    }
+  }, [refreshStatus]);
+
+  const setTelemetryInterval = useCallback(async (seconds: number) => {
+    try {
+      await call<[number], void>("set_telemetry_interval", seconds);
+      await refreshStatus();
+    } catch (e) {
+      console.error("Failed to set telemetry interval:", e);
+    }
+  }, [refreshStatus]);
+
   // Initial load
   useEffect(() => {
     refreshStatus();
@@ -82,6 +104,8 @@ export function useAgent(): UseAgentReturn {
     refreshStatus,
     pairingCode,
     setPairingCode,
+    setTelemetryEnabled,
+    setTelemetryInterval,
   };
 }
 

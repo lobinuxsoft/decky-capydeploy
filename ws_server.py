@@ -9,6 +9,7 @@ import json
 import os
 import random
 import time
+import uuid
 from typing import Optional, TYPE_CHECKING
 
 import decky  # type: ignore
@@ -189,6 +190,7 @@ class WebSocketServer:
             await self._cleanup_orphaned_uploads()
 
             if self.connected_hub and self.connected_hub.get("id") == hub_id:
+                self.stop_telemetry()
                 self.connected_hub = None
                 try:
                     await self.plugin.notify_frontend("hub_disconnected", {})
@@ -209,16 +211,23 @@ class WebSocketServer:
         # Check if token is valid
         if token and hub_id and self.plugin.pairing.validate_token(hub_id, token):
             self.connected_hub = {"id": hub_id, "name": hub_name, "version": hub_version, "platform": hub_platform}
+            tel_enabled = self.plugin.settings.getSetting("telemetry_enabled", False)
+            tel_interval = self.plugin.settings.getSetting("telemetry_interval", 2)
             await self.send(websocket, msg_id, "agent_status", {
                 "name": self.plugin.agent_name,
                 "version": self.plugin.version,
                 "platform": "linux",
                 "acceptConnections": self.plugin.accept_connections,
+                "telemetryEnabled": tel_enabled,
+                "telemetryInterval": tel_interval,
             })
             await self.plugin.notify_frontend("hub_connected", {
                 "name": hub_name,
                 "version": hub_version,
             })
+            # Start telemetry if enabled
+            if tel_enabled:
+                self.start_telemetry(tel_interval)
             return hub_id, True
 
         # Need pairing
@@ -635,6 +644,45 @@ class WebSocketServer:
         del self.uploads[upload_id]
 
         await self.send(websocket, msg_id, "operation_result", result)
+
+    # ── Telemetry ─────────────────────────────────────────────────────────
+
+    def start_telemetry(self, interval: float) -> None:
+        """Start sending telemetry data to the connected Hub."""
+        if not self.connected_hub or not self.plugin.telemetry:
+            return
+        self.plugin.telemetry.start(interval, self._send_telemetry_data)
+        decky.logger.info(f"Telemetry streaming started (interval={interval}s)")
+
+    def stop_telemetry(self) -> None:
+        """Stop sending telemetry data."""
+        if self.plugin.telemetry:
+            self.plugin.telemetry.stop()
+
+    async def _send_telemetry_data(self, data: dict) -> None:
+        """Callback invoked by TelemetryCollector each tick."""
+        if not self.connected_hub or not self._send_queue:
+            return
+        msg = {
+            "id": str(uuid.uuid4()),
+            "type": "telemetry_data",
+            "payload": data,
+        }
+        await self._send_queue.put(json.dumps(msg))
+
+    async def send_telemetry_status(self) -> None:
+        """Notify the Hub about telemetry enabled/interval changes."""
+        if not self.connected_hub or not self._send_queue:
+            return
+        msg = {
+            "id": str(uuid.uuid4()),
+            "type": "telemetry_status",
+            "payload": {
+                "enabled": self.plugin.settings.getSetting("telemetry_enabled", False),
+                "interval": self.plugin.settings.getSetting("telemetry_interval", 2),
+            },
+        }
+        await self._send_queue.put(json.dumps(msg))
 
     async def send(self, websocket, msg_id: str, msg_type: str, payload):
         """Send a JSON message via the write queue."""

@@ -32,7 +32,10 @@ const CapyDeployPanel: VFC = () => {
   const [gamesRefresh, setGamesRefresh] = useState(0);
   const operationTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const { enabled, setEnabled, status, pairingCode, setPairingCode, refreshStatus } = useAgent();
+  const {
+    enabled, setEnabled, status, pairingCode, setPairingCode, refreshStatus,
+    setTelemetryEnabled, setTelemetryInterval,
+  } = useAgent();
 
   // Register UI callbacks so background poller can update React state
   useEffect(() => {
@@ -91,6 +94,10 @@ const CapyDeployPanel: VFC = () => {
         ip={status?.ip ?? "127.0.0.1"}
         installPath={status?.installPath ?? "~/Games"}
         onRefresh={refreshStatus}
+        telemetryEnabled={status?.telemetryEnabled ?? false}
+        telemetryInterval={status?.telemetryInterval ?? 2}
+        onTelemetryEnabledChange={setTelemetryEnabled}
+        onTelemetryIntervalChange={setTelemetryInterval}
       />
 
       <AuthorizedHubs enabled={enabled} />

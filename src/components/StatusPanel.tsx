@@ -25,6 +25,7 @@ import {
   FaKey,
   FaChevronDown,
   FaChevronRight,
+  FaChartLine,
 } from "react-icons/fa6";
 import { colors } from "../styles/theme";
 import { usePanelState } from "../hooks/usePanelState";
@@ -49,7 +50,13 @@ interface StatusPanelProps {
   ip: string;
   installPath: string;
   onRefresh: () => void;
+  telemetryEnabled: boolean;
+  telemetryInterval: number;
+  onTelemetryEnabledChange: (enabled: boolean) => void;
+  onTelemetryIntervalChange: (seconds: number) => void;
 }
+
+const INTERVAL_OPTIONS = [1, 2, 3, 5, 10];
 
 const StatusPanel: VFC<StatusPanelProps> = ({
   enabled,
@@ -64,11 +71,22 @@ const StatusPanel: VFC<StatusPanelProps> = ({
   ip,
   installPath,
   onRefresh,
+  telemetryEnabled,
+  telemetryInterval,
+  onTelemetryEnabledChange,
+  onTelemetryIntervalChange,
 }) => {
   // Collapsible section states (persisted across panel close/open)
   const [statusExpanded, toggleStatus] = usePanelState("status");
   const [infoExpanded, toggleInfo] = usePanelState("info");
   const [networkExpanded, toggleNetwork] = usePanelState("network");
+  const [telemetryExpanded, toggleTelemetry] = usePanelState("telemetry", false);
+  const handleCycleInterval = () => {
+    const idx = INTERVAL_OPTIONS.indexOf(telemetryInterval);
+    const next = INTERVAL_OPTIONS[(idx + 1) % INTERVAL_OPTIONS.length];
+    onTelemetryIntervalChange(next);
+  };
+
   const handleEditName = () => {
     showModal(<NameEditModal currentName={agentName} onSaved={onRefresh} />);
   };
@@ -235,6 +253,55 @@ const StatusPanel: VFC<StatusPanelProps> = ({
                   <span className="cd-mono">{ip}</span>
                 </Field>
               </PanelSectionRow>
+            </PanelSection>
+          )}
+        </div>
+      )}
+
+      {enabled && (
+        <div className="cd-section">
+          <div className="cd-section-title" onClick={toggleTelemetry}>
+            {telemetryExpanded ? <FaChevronDown size={10} color={colors.primary} /> : <FaChevronRight size={10} color={colors.disabled} />}
+            Telemetry
+          </div>
+          {telemetryExpanded && (
+            <PanelSection>
+              <PanelSectionRow>
+                <ToggleField
+                  label="Send hardware metrics"
+                  description="Stream CPU, GPU, RAM, battery to Hub"
+                  checked={telemetryEnabled}
+                  onChange={onTelemetryEnabledChange}
+                />
+              </PanelSectionRow>
+
+              {telemetryEnabled && (
+                <>
+                  <PanelSectionRow>
+                    <Field
+                      label="Interval"
+                      icon={<FaChartLine color={colors.capy} />}
+                      description="Tap to cycle"
+                      onClick={handleCycleInterval}
+                    >
+                      <span className="cd-mono">{telemetryInterval}s</span>
+                    </Field>
+                  </PanelSectionRow>
+
+                  <PanelSectionRow>
+                    <Field label="Status">
+                      <span className={connected ? "cd-status-connected" : "cd-text-disabled"}>
+                        {connected && telemetryEnabled ? (
+                          <>
+                            <span className="cd-pulse" />
+                            {" Sending"}
+                          </>
+                        ) : "Off"}
+                      </span>
+                    </Field>
+                  </PanelSectionRow>
+                </>
+              )}
             </PanelSection>
           )}
         </div>
