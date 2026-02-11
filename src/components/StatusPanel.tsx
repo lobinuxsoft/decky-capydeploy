@@ -26,6 +26,7 @@ import {
   FaChevronDown,
   FaChevronRight,
   FaChartLine,
+  FaTerminal,
 } from "react-icons/fa6";
 import { colors } from "../styles/theme";
 import { usePanelState } from "../hooks/usePanelState";
@@ -54,6 +55,8 @@ interface StatusPanelProps {
   telemetryInterval: number;
   onTelemetryEnabledChange: (enabled: boolean) => void;
   onTelemetryIntervalChange: (seconds: number) => void;
+  consoleLogEnabled: boolean;
+  onConsoleLogEnabledChange: (enabled: boolean) => void;
 }
 
 const INTERVAL_OPTIONS = [1, 2, 3, 5, 10];
@@ -75,12 +78,15 @@ const StatusPanel: VFC<StatusPanelProps> = ({
   telemetryInterval,
   onTelemetryEnabledChange,
   onTelemetryIntervalChange,
+  consoleLogEnabled,
+  onConsoleLogEnabledChange,
 }) => {
   // Collapsible section states (persisted across panel close/open)
   const [statusExpanded, toggleStatus] = usePanelState("status");
   const [infoExpanded, toggleInfo] = usePanelState("info");
   const [networkExpanded, toggleNetwork] = usePanelState("network");
   const [telemetryExpanded, toggleTelemetry] = usePanelState("telemetry", false);
+  const [consoleLogExpanded, toggleConsoleLog] = usePanelState("consolelog", false);
   const handleCycleInterval = () => {
     const idx = INTERVAL_OPTIONS.indexOf(telemetryInterval);
     const next = INTERVAL_OPTIONS[(idx + 1) % INTERVAL_OPTIONS.length];
@@ -301,6 +307,42 @@ const StatusPanel: VFC<StatusPanelProps> = ({
                     </Field>
                   </PanelSectionRow>
                 </>
+              )}
+            </PanelSection>
+          )}
+        </div>
+      )}
+
+      {enabled && (
+        <div className="cd-section">
+          <div className="cd-section-title" onClick={toggleConsoleLog}>
+            {consoleLogExpanded ? <FaChevronDown size={10} color={colors.primary} /> : <FaChevronRight size={10} color={colors.disabled} />}
+            Console Log
+          </div>
+          {consoleLogExpanded && (
+            <PanelSection>
+              <PanelSectionRow>
+                <ToggleField
+                  label="Stream console logs"
+                  description="Forward Steam console output to Hub"
+                  checked={consoleLogEnabled}
+                  onChange={onConsoleLogEnabledChange}
+                />
+              </PanelSectionRow>
+
+              {consoleLogEnabled && (
+                <PanelSectionRow>
+                  <Field label="Status" icon={<FaTerminal color={colors.capy} />}>
+                    <span className={connected ? "cd-status-connected" : "cd-text-disabled"}>
+                      {connected && consoleLogEnabled ? (
+                        <>
+                          <span className="cd-pulse" />
+                          {" Streaming"}
+                        </>
+                      ) : "Off"}
+                    </span>
+                  </Field>
+                </PanelSectionRow>
               )}
             </PanelSection>
           )}

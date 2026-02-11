@@ -11,6 +11,7 @@ import { ProgressModalContent, progressState } from "./components/ProgressPanel"
 import ConfirmActionModal from "./components/ConfirmActionModal";
 import PairingCodeModal from "./components/PairingCodeModal";
 import type { OperationEvent, UploadProgress } from "./types";
+import { installConsoleHook, removeConsoleHook } from "./consoleHook";
 
 // Import mascot for branded toasts
 import mascotUrl from "../assets/mascot.gif";
@@ -375,6 +376,23 @@ async function pollAllEvents() {
         );
       }
     } while (serverError?.data);
+
+    // ── Console log hook toggle (backend tells us to install/remove JS hook) ──
+
+    let consoleToggle;
+    do {
+      consoleToggle = await call<[string], { timestamp: number; data: { enabled: boolean } } | null>(
+        "get_event",
+        "console_log_toggle"
+      );
+      if (consoleToggle?.data) {
+        if (consoleToggle.data.enabled) {
+          installConsoleHook();
+        } else {
+          removeConsoleHook();
+        }
+      }
+    } while (consoleToggle?.data);
   } catch (e) {
     console.error("Background poll error:", e);
   }

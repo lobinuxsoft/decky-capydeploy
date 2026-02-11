@@ -20,6 +20,7 @@ import {
   stopBackgroundPolling,
 } from "./eventPoller";
 import type { OperationEvent, UploadProgress } from "./types";
+import { removeConsoleHook } from "./consoleHook";
 
 // Import mascot
 import mascotUrl from "../assets/mascot.gif";
@@ -34,7 +35,7 @@ const CapyDeployPanel: VFC = () => {
 
   const {
     enabled, setEnabled, status, pairingCode, setPairingCode, refreshStatus,
-    setTelemetryEnabled, setTelemetryInterval,
+    setTelemetryEnabled, setTelemetryInterval, setConsoleLogEnabled,
   } = useAgent();
 
   // Register UI callbacks so background poller can update React state
@@ -98,6 +99,8 @@ const CapyDeployPanel: VFC = () => {
         telemetryInterval={status?.telemetryInterval ?? 2}
         onTelemetryEnabledChange={setTelemetryEnabled}
         onTelemetryIntervalChange={setTelemetryInterval}
+        consoleLogEnabled={status?.consoleLogEnabled ?? false}
+        onConsoleLogEnabledChange={setConsoleLogEnabled}
       />
 
       <AuthorizedHubs enabled={enabled} />
@@ -117,6 +120,7 @@ export default definePlugin(() => {
     content: <CapyDeployPanel />,
     icon: <CapyIcon />,
     onDismount() {
+      removeConsoleHook();
       stopBackgroundPolling();
     },
   };

@@ -193,8 +193,11 @@ class WebSocketServer:
 
             if self.connected_hub and self.connected_hub.get("id") == hub_id:
                 self.stop_telemetry()
+                self.stop_console_log()
                 self.connected_hub = None
                 try:
+                    # Tell JS frontend to remove console hook
+                    await self.plugin.notify_frontend("console_log_toggle", {"enabled": False})
                     await self.plugin.notify_frontend("hub_disconnected", {})
                 except Exception as e:
                     decky.logger.error(f"Failed to notify hub_disconnected: {e}")
@@ -215,6 +218,7 @@ class WebSocketServer:
             self.connected_hub = {"id": hub_id, "name": hub_name, "version": hub_version, "platform": hub_platform}
             tel_enabled = self.plugin.settings.getSetting("telemetry_enabled", False)
             tel_interval = self.plugin.settings.getSetting("telemetry_interval", 2)
+            cl_enabled = self.plugin.settings.getSetting("console_log_enabled", False)
             await self.send(websocket, msg_id, "agent_status", {
                 "name": self.plugin.agent_name,
                 "version": self.plugin.version,
@@ -222,6 +226,7 @@ class WebSocketServer:
                 "acceptConnections": self.plugin.accept_connections,
                 "telemetryEnabled": tel_enabled,
                 "telemetryInterval": tel_interval,
+                "consoleLogEnabled": cl_enabled,
             })
             await self.plugin.notify_frontend("hub_connected", {
                 "name": hub_name,
@@ -230,6 +235,9 @@ class WebSocketServer:
             # Start telemetry if enabled
             if tel_enabled:
                 self.start_telemetry(tel_interval)
+            # Start console log if enabled
+            if cl_enabled:
+                self.start_console_log()
             return hub_id, True
 
         # Need pairing
@@ -682,6 +690,44 @@ class WebSocketServer:
             "payload": {
                 "enabled": self.plugin.settings.getSetting("telemetry_enabled", False),
                 "interval": self.plugin.settings.getSetting("telemetry_interval", 2),
+            },
+        }
+        await self._send_queue.put(json.dumps(msg))
+
+    # ── Console Log ────────────────────────────────────────────────────────
+
+    def start_console_log(self) -> None:
+        """Start sending console log data to the connected Hub."""
+        if not self.connected_hub or not self.plugin.console_log:
+            return
+        self.plugin.console_log.start(self._send_console_log_data)
+        decky.logger.info("Console log streaming started")
+
+    def stop_console_log(self) -> None:
+        """Stop sending console log data."""
+        if self.plugin.console_log:
+            self.plugin.console_log.stop()
+
+    async def _send_console_log_data(self, batch: dict) -> None:
+        """Callback invoked by ConsoleLogCollector each flush."""
+        if not self.connected_hub or not self._send_queue:
+            return
+        msg = {
+            "id": str(uuid.uuid4()),
+            "type": "console_log_data",
+            "payload": batch,
+        }
+        await self._send_queue.put(json.dumps(msg))
+
+    async def send_console_log_status(self) -> None:
+        """Notify the Hub about console log enabled/disabled changes."""
+        if not self.connected_hub or not self._send_queue:
+            return
+        msg = {
+            "id": str(uuid.uuid4()),
+            "type": "console_log_status",
+            "payload": {
+                "enabled": self.plugin.settings.getSetting("console_log_enabled", False),
             },
         }
         await self._send_queue.put(json.dumps(msg))

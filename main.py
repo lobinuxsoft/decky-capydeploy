@@ -40,6 +40,11 @@ try:
 except ImportError:
     TelemetryCollector = None  # type: ignore
 
+try:
+    from console_log import ConsoleLogCollector
+except ImportError:
+    ConsoleLogCollector = None  # type: ignore
+
 def _read_version() -> str:
     """Read version from package.json at plugin directory."""
     try:
@@ -59,6 +64,7 @@ class Plugin:
     ws_server: WebSocketServer
     mdns_service: Optional[MDNSService]
     telemetry: TelemetryCollector
+    console_log: ConsoleLogCollector
     agent_id: str
     agent_name: str
     accept_connections: bool
@@ -70,6 +76,7 @@ class Plugin:
         "operation_event", "create_shortcut", "remove_shortcut",
         "update_artwork", "pairing_code", "pairing_success",
         "hub_connected", "hub_disconnected", "server_error",
+        "console_log_toggle",
     }
 
     async def _main(self):
@@ -83,6 +90,7 @@ class Plugin:
         self.ws_server = WebSocketServer(self)
         self.mdns_service = None
         self.telemetry = TelemetryCollector() if TelemetryCollector else None
+        self.console_log = ConsoleLogCollector() if ConsoleLogCollector else None
 
         # Clean stale event queues from previous sessions
         for key in list(self.settings.settings.keys()):
@@ -124,6 +132,8 @@ class Plugin:
 
     async def _unload(self):
         """Called when the plugin is unloaded."""
+        if self.console_log:
+            self.console_log.stop()
         if self.telemetry:
             self.telemetry.stop()
         if self.mdns_service:
@@ -199,6 +209,7 @@ class Plugin:
             "ip": get_local_ip(),
             "telemetryEnabled": self.settings.getSetting("telemetry_enabled", False),
             "telemetryInterval": self.settings.getSetting("telemetry_interval", 2),
+            "consoleLogEnabled": self.settings.getSetting("console_log_enabled", False),
         }
 
     async def get_event(self, event_name: str) -> Optional[dict]:
@@ -252,6 +263,30 @@ class Plugin:
             "enabled": self.settings.getSetting("telemetry_enabled", False),
             "interval": self.settings.getSetting("telemetry_interval", 2),
         }
+
+    async def set_console_log_enabled(self, enabled=False):
+        """Enable or disable console log streaming."""
+        decky.logger.info(f"set_console_log_enabled: {enabled}")
+        self.settings.setSetting("console_log_enabled", enabled)
+        if enabled and self.ws_server.connected_hub:
+            self.ws_server.start_console_log()
+        else:
+            self.ws_server.stop_console_log()
+        # Tell JS frontend to install/remove the console hook
+        await self.notify_frontend("console_log_toggle", {"enabled": enabled})
+        await self.ws_server.send_console_log_status()
+
+    async def add_console_log(self, level: str, text: str, url: str = "",
+                              line: int = 0, segments_json: str = ""):
+        """Add a console log entry from the frontend JS hook."""
+        if self.console_log and self.console_log.running:
+            segments = None
+            if segments_json:
+                try:
+                    segments = json.loads(segments_json)
+                except (json.JSONDecodeError, TypeError):
+                    pass
+            self.console_log.add_entry(level, text, "console", url, line, segments)
 
     async def log_info(self, message: str):
         """Log an info message."""

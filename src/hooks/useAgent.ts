@@ -18,6 +18,7 @@ export interface AgentStatus {
   ip: string;
   telemetryEnabled: boolean;
   telemetryInterval: number;
+  consoleLogEnabled: boolean;
 }
 
 interface ArtworkAsset {
@@ -47,6 +48,7 @@ export interface UseAgentReturn {
   setPairingCode: (code: string | null) => void;
   setTelemetryEnabled: (enabled: boolean) => Promise<void>;
   setTelemetryInterval: (seconds: number) => Promise<void>;
+  setConsoleLogEnabled: (enabled: boolean) => Promise<void>;
 }
 
 export function useAgent(): UseAgentReturn {
@@ -92,6 +94,15 @@ export function useAgent(): UseAgentReturn {
     }
   }, [refreshStatus]);
 
+  const setConsoleLogEnabled = useCallback(async (value: boolean) => {
+    try {
+      await call<[boolean], void>("set_console_log_enabled", value);
+      await refreshStatus();
+    } catch (e) {
+      console.error("Failed to set console log enabled:", e);
+    }
+  }, [refreshStatus]);
+
   // Initial load
   useEffect(() => {
     refreshStatus();
@@ -106,6 +117,7 @@ export function useAgent(): UseAgentReturn {
     setPairingCode,
     setTelemetryEnabled,
     setTelemetryInterval,
+    setConsoleLogEnabled,
   };
 }
 
