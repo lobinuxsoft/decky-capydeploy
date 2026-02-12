@@ -35,6 +35,21 @@ from upload import UploadSession
 from artwork import download_artwork, set_shortcut_icon, set_shortcut_icon_from_url
 from ws_server import WebSocketServer
 
+try:
+    from telemetry import TelemetryCollector
+except ImportError:
+    TelemetryCollector = None  # type: ignore
+
+try:
+    from console_log import ConsoleLogCollector
+except ImportError:
+    ConsoleLogCollector = None  # type: ignore
+
+try:
+    from game_log import GameLogTailer
+except ImportError:
+    GameLogTailer = None  # type: ignore
+
 def _read_version() -> str:
     """Read version from package.json at plugin directory."""
     try:
@@ -53,6 +68,10 @@ class Plugin:
     pairing: PairingManager
     ws_server: WebSocketServer
     mdns_service: Optional[MDNSService]
+    telemetry: TelemetryCollector
+    console_log: ConsoleLogCollector
+    game_log_tailer: Optional[object]
+    _active_game_logs: set  # appIds currently being logged via context menu
     agent_id: str
     agent_name: str
     accept_connections: bool
@@ -64,6 +83,7 @@ class Plugin:
         "operation_event", "create_shortcut", "remove_shortcut",
         "update_artwork", "pairing_code", "pairing_success",
         "hub_connected", "hub_disconnected", "server_error",
+        "console_log_toggle",
     }
 
     async def _main(self):
@@ -76,6 +96,10 @@ class Plugin:
         self.pairing = PairingManager(self.settings)
         self.ws_server = WebSocketServer(self)
         self.mdns_service = None
+        self.telemetry = TelemetryCollector() if TelemetryCollector else None
+        self.console_log = ConsoleLogCollector() if ConsoleLogCollector else None
+        self.game_log_tailer = GameLogTailer() if GameLogTailer else None
+        self._active_game_logs = set()
 
         # Clean stale event queues from previous sessions
         for key in list(self.settings.settings.keys()):
@@ -117,6 +141,12 @@ class Plugin:
 
     async def _unload(self):
         """Called when the plugin is unloaded."""
+        if self.game_log_tailer:
+            self.game_log_tailer.stop()
+        if self.console_log:
+            self.console_log.stop()
+        if self.telemetry:
+            self.telemetry.stop()
         if self.mdns_service:
             self.mdns_service.stop()
             self.mdns_service = None
@@ -188,6 +218,9 @@ class Plugin:
             "version": PLUGIN_VERSION,
             "port": self.ws_server.actual_port,
             "ip": get_local_ip(),
+            "telemetryEnabled": self.settings.getSetting("telemetry_enabled", False),
+            "telemetryInterval": self.settings.getSetting("telemetry_interval", 2),
+            "consoleLogEnabled": self.settings.getSetting("console_log_enabled", False),
         }
 
     async def get_event(self, event_name: str) -> Optional[dict]:
@@ -214,6 +247,78 @@ class Plugin:
         self.install_path = path
         self.settings.setSetting("install_path", path)
         os.makedirs(expand_path(path), exist_ok=True)
+
+    async def set_telemetry_enabled(self, enabled=False):
+        """Enable or disable telemetry sending."""
+        decky.logger.info(f"set_telemetry_enabled: {enabled}")
+        self.settings.setSetting("telemetry_enabled", enabled)
+        if enabled and self.ws_server.connected_hub:
+            interval = self.settings.getSetting("telemetry_interval", 2)
+            self.ws_server.start_telemetry(interval)
+        else:
+            self.ws_server.stop_telemetry()
+        await self.ws_server.send_telemetry_status()
+
+    async def set_telemetry_interval(self, seconds=2):
+        """Set telemetry send interval in seconds."""
+        seconds = max(1, min(int(seconds), 10))
+        decky.logger.info(f"set_telemetry_interval: {seconds}s")
+        self.settings.setSetting("telemetry_interval", seconds)
+        if self.telemetry and self.telemetry.running:
+            self.telemetry.update_interval(seconds)
+        await self.ws_server.send_telemetry_status()
+
+    async def get_telemetry_settings(self):
+        """Get current telemetry settings."""
+        return {
+            "enabled": self.settings.getSetting("telemetry_enabled", False),
+            "interval": self.settings.getSetting("telemetry_interval", 2),
+        }
+
+    async def set_console_log_enabled(self, enabled=False):
+        """Enable or disable console log streaming."""
+        decky.logger.info(f"set_console_log_enabled: {enabled}")
+        self.settings.setSetting("console_log_enabled", enabled)
+        if enabled and self.ws_server.connected_hub:
+            self.ws_server.start_console_log()
+        else:
+            self.ws_server.stop_console_log()
+        # Tell JS frontend to install/remove the console hook
+        await self.notify_frontend("console_log_toggle", {"enabled": enabled})
+        await self.ws_server.send_console_log_status()
+
+    async def add_console_log(self, level: str, text: str, url: str = "",
+                              line: int = 0, segments_json: str = ""):
+        """Add a console log entry from the frontend JS hook."""
+        if self.console_log and self.console_log.running:
+            segments = None
+            if segments_json:
+                try:
+                    segments = json.loads(segments_json)
+                except (json.JSONDecodeError, TypeError):
+                    pass
+            self.console_log.add_entry(level, text, "console", url, line, segments)
+
+    async def get_wrapper_path(self):
+        """Return the path to the game log wrapper script."""
+        return os.path.join(PLUGIN_DIR, "bin", "capydeploy-game-wrapper.sh")
+
+    async def notify_game_log_start(self, app_id: int):
+        """Mark an appId as actively being logged (context menu launch)."""
+        self._active_game_logs.add(app_id)
+        decky.logger.info(f"Game log start notified: appId={app_id}")
+
+    async def game_lifecycle_event(self, app_id: int, running: bool):
+        """Called by frontend when a game starts or stops."""
+        decky.logger.info(f"Game lifecycle: appId={app_id} running={running}")
+        if app_id not in self._active_game_logs:
+            return
+
+        if running:
+            self.ws_server.start_game_log(app_id)
+        else:
+            self.ws_server.stop_game_log()
+            self._active_game_logs.discard(app_id)
 
     async def log_info(self, message: str):
         """Log an info message."""
@@ -267,9 +372,20 @@ class Plugin:
         return False
 
     async def get_installed_games(self):
-        """Get list of games installed in the install path."""
+        """Get list of games installed in the install path, with appId from tracked shortcuts."""
         games = []
         expanded_path = expand_path(self.install_path)
+        tracked = self.settings.getSetting("tracked_shortcuts", [])
+
+        # Build name → appId lookup from tracked shortcuts
+        name_to_appid: dict[str, int] = {}
+        for sc in tracked:
+            app_id = sc.get("appId", 0)
+            for key in ("gameName", "name"):
+                name = sc.get(key, "")
+                if name and app_id:
+                    name_to_appid[name] = app_id
+
         try:
             if os.path.exists(expanded_path):
                 for name in os.listdir(expanded_path):
@@ -283,10 +399,12 @@ class Plugin:
                                     total_size += os.path.getsize(fp)
                                 except OSError:
                                     pass
+                        app_id = name_to_appid.get(name, 0)
                         games.append({
                             "name": name,
                             "path": game_path,
                             "size": total_size,
+                            "appId": app_id,
                         })
         except Exception as e:
             decky.logger.error(f"Error listing games: {e}")

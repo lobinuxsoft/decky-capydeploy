@@ -20,6 +20,8 @@ import {
   stopBackgroundPolling,
 } from "./eventPoller";
 import type { OperationEvent, UploadProgress } from "./types";
+import { removeConsoleHook } from "./consoleHook";
+import contextMenuPatch, { getLibraryContextMenu, initWrapperPath } from "./patches/contextMenuPatch";
 
 // Import mascot
 import mascotUrl from "../assets/mascot.gif";
@@ -32,7 +34,10 @@ const CapyDeployPanel: VFC = () => {
   const [gamesRefresh, setGamesRefresh] = useState(0);
   const operationTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const { enabled, setEnabled, status, pairingCode, setPairingCode, refreshStatus } = useAgent();
+  const {
+    enabled, setEnabled, status, pairingCode, setPairingCode, refreshStatus,
+    setTelemetryEnabled, setTelemetryInterval, setConsoleLogEnabled,
+  } = useAgent();
 
   // Register UI callbacks so background poller can update React state
   useEffect(() => {
@@ -91,6 +96,12 @@ const CapyDeployPanel: VFC = () => {
         ip={status?.ip ?? "127.0.0.1"}
         installPath={status?.installPath ?? "~/Games"}
         onRefresh={refreshStatus}
+        telemetryEnabled={status?.telemetryEnabled ?? false}
+        telemetryInterval={status?.telemetryInterval ?? 2}
+        onTelemetryEnabledChange={setTelemetryEnabled}
+        onTelemetryIntervalChange={setTelemetryInterval}
+        consoleLogEnabled={status?.consoleLogEnabled ?? false}
+        onConsoleLogEnabledChange={setConsoleLogEnabled}
       />
 
       <AuthorizedHubs enabled={enabled} />
@@ -105,11 +116,19 @@ const CapyDeployPanel: VFC = () => {
 export default definePlugin(() => {
   startBackgroundPolling();
 
+  // Cache wrapper path (async, but fast — just one backend call).
+  initWrapperPath();
+
+  // Patch the game context menu (lazy lookup, first call resolves the component).
+  const menuPatches = contextMenuPatch(getLibraryContextMenu());
+
   return {
     title: <div className={staticClasses.Title}>CapyDeploy</div>,
     content: <CapyDeployPanel />,
     icon: <CapyIcon />,
     onDismount() {
+      menuPatches?.unpatch();
+      removeConsoleHook();
       stopBackgroundPolling();
     },
   };

@@ -20,6 +20,10 @@ A [Decky Loader](https://decky.xyz/) plugin that acts as a CapyDeploy Agent insi
 
 - **No Steam restart** — Creates shortcuts using native `SteamClient.Apps` APIs
 - **Instant artwork** — Applies cover art, icons, and heroes via `SteamClient.Apps.SetCustomArtworkForApp()`
+- **Hardware telemetry** — Real-time CPU, GPU, RAM, battery, fan, power metrics streamed to Hub
+- **Console log streaming** — Live Steam console logs with bitmask-based level filtering (debug/info/warn/error)
+- **Game log wrapper** — Launch games with stdout/stderr capture via context menu, logs streamed to Hub
+- **Remote control** — Hub can toggle console log on/off remotely
 - **Toggle On/Off** — Enable/disable the WebSocket connection from the QAM panel
 - **Auto-connect** — Reconnects automatically when enabled
 - **Real-time notifications** — Toast notifications for game installs
@@ -32,6 +36,9 @@ A [Decky Loader](https://decky.xyz/) plugin that acts as a CapyDeploy Agent insi
 |---------|----------------------|--------------|
 | Shortcuts | `shortcuts.vdf` (restart Steam) | `SteamClient.Apps.AddShortcut()` (instant) |
 | Artwork | File copy to `grid/` | `SteamClient.Apps.SetCustomArtworkForApp()` |
+| Telemetry | sysfs/procfs collector | sysfs/procfs collector |
+| Console Log | CEF CDP console capture | SteamClient console capture |
+| Game Log | Wrapper via CEF launch options | Wrapper via context menu |
 | UI | Standalone window | Quick Access Menu panel |
 | Mode | Desktop | Gaming |
 
@@ -72,7 +79,10 @@ Hub (PC) ──WebSocket──► Decky Plugin (Handheld)
                               │
                               ├─► SteamClient.Apps.AddShortcut()
                               ├─► SteamClient.Apps.SetCustomArtworkForApp()
-                              └─► Toast notifications
+                              ├─► Toast notifications
+                              ├─► Hardware telemetry (sysfs/procfs → Hub)
+                              ├─► Console log streaming (SteamClient → Hub)
+                              └─► Game log wrapper (launch options → stdout capture → Hub)
 ```
 
 The plugin runs a WebSocket server that speaks the same protocol as the desktop Agent. The Hub doesn't need to know which type of agent it's talking to — the protocol is identical.
@@ -115,10 +125,16 @@ decky-capydeploy/
 ├── upload.py           # UploadSession data class
 ├── artwork.py          # Artwork download + icon VDF writing
 ├── ws_server.py        # WebSocket server for Hub connections
+├── telemetry.py        # Hardware telemetry collector (sysfs/procfs)
+├── console_log.py      # Console log collector + streaming
+├── game_log.py         # Game log file tailer (reads wrapper output)
+├── bin/
+│   └── capydeploy-game-wrapper.sh  # Bash wrapper for game stdout capture
 ├── src/
 │   ├── index.tsx       # React UI entry point
 │   ├── eventPoller.tsx # Background polling + SteamClient operations
 │   ├── components/     # React components (StatusPanel, InstalledGames, etc.)
+│   ├── patches/        # Context menu patches (game log wrapper)
 │   ├── hooks/          # Custom hooks (useAgent, usePanelState)
 │   ├── styles/         # Theme constants
 │   └── types.ts        # TypeScript type definitions

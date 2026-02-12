@@ -72,9 +72,15 @@ python3 -m pip install --target py_modules -r requirements.txt --no-cache-dir
 echo "Copying files..."
 cp plugin.json "$BUILD_DIR/"
 cp package.json "$BUILD_DIR/"
-for pyfile in main.py steam_utils.py mdns_service.py pairing.py upload.py artwork.py ws_server.py; do
+for pyfile in main.py steam_utils.py mdns_service.py pairing.py upload.py artwork.py ws_server.py telemetry.py console_log.py game_log.py; do
     cp "$pyfile" "$BUILD_DIR/"
 done
+
+# Copy wrapper scripts
+if [ -d "bin" ]; then
+    cp -r bin "$BUILD_DIR/"
+    chmod +x "$BUILD_DIR/bin/"*.sh
+fi
 cp requirements.txt "$BUILD_DIR/"
 cp -r py_modules "$BUILD_DIR/"
 

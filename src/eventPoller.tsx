@@ -11,6 +11,7 @@ import { ProgressModalContent, progressState } from "./components/ProgressPanel"
 import ConfirmActionModal from "./components/ConfirmActionModal";
 import PairingCodeModal from "./components/PairingCodeModal";
 import type { OperationEvent, UploadProgress } from "./types";
+import { installConsoleHook, removeConsoleHook } from "./consoleHook";
 
 // Import mascot for branded toasts
 import mascotUrl from "../assets/mascot.gif";
@@ -210,6 +211,39 @@ function closeProgressModal(delay = 3000) {
   }, delay);
 }
 
+// ── Game lifecycle monitoring ───────────────────────────────────────────────
+
+import { removeWrapperFromLaunchOptions, activeGameLogs } from "./patches/contextMenuPatch";
+
+let lifecycleUnregister: (() => void) | null = null;
+
+function startGameLifecycleMonitoring() {
+  if (lifecycleUnregister) return;
+  try {
+    const { unregister } = SteamClient.GameSessions.RegisterForAppLifetimeNotifications(
+      (notif: { unAppID: number; bRunning: boolean }) => {
+        // When a logged game stops, strip the wrapper from its launch options.
+        if (!notif.bRunning && activeGameLogs.has(notif.unAppID)) {
+          removeWrapperFromLaunchOptions(notif.unAppID);
+        }
+        call("game_lifecycle_event", notif.unAppID, notif.bRunning).catch((e: unknown) =>
+          console.error("Failed to report game lifecycle:", e)
+        );
+      }
+    );
+    lifecycleUnregister = unregister;
+  } catch (e) {
+    console.error("Failed to register game lifecycle monitoring:", e);
+  }
+}
+
+function stopGameLifecycleMonitoring() {
+  if (lifecycleUnregister) {
+    lifecycleUnregister();
+    lifecycleUnregister = null;
+  }
+}
+
 // ── Centralized background polling (runs even when panel is closed) ────────
 
 let bgPollInterval: ReturnType<typeof setInterval> | null = null;
@@ -375,6 +409,24 @@ async function pollAllEvents() {
         );
       }
     } while (serverError?.data);
+
+    // ── Console log hook toggle (backend tells us to install/remove JS hook) ──
+
+    let consoleToggle;
+    do {
+      consoleToggle = await call<[string], { timestamp: number; data: { enabled: boolean } } | null>(
+        "get_event",
+        "console_log_toggle"
+      );
+      if (consoleToggle?.data) {
+        if (consoleToggle.data.enabled) {
+          installConsoleHook();
+        } else {
+          removeConsoleHook();
+        }
+      }
+    } while (consoleToggle?.data);
+
   } catch (e) {
     console.error("Background poll error:", e);
   }
@@ -383,6 +435,7 @@ async function pollAllEvents() {
 export function startBackgroundPolling() {
   if (!bgPollInterval) {
     bgPollInterval = setInterval(pollAllEvents, 1000);
+    startGameLifecycleMonitoring();
   }
 }
 
@@ -391,4 +444,5 @@ export function stopBackgroundPolling() {
     clearInterval(bgPollInterval);
     bgPollInterval = null;
   }
+  stopGameLifecycleMonitoring();
 }

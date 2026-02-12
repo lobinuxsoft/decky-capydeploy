@@ -9,6 +9,7 @@ import json
 import os
 import random
 import time
+import uuid
 from typing import Optional, TYPE_CHECKING
 
 import decky  # type: ignore
@@ -164,6 +165,10 @@ class WebSocketServer:
                         await self.handle_delete_game(websocket, msg_id, payload)
                     elif msg_type == "restart_steam":
                         await self.handle_restart_steam(websocket, msg_id)
+                    elif msg_type == "set_console_log_filter":
+                        await self.handle_set_console_log_filter(websocket, msg_id, payload)
+                    elif msg_type == "set_console_log_enabled":
+                        await self.handle_set_console_log_enabled(websocket, msg_id, payload)
                     else:
                         decky.logger.warning(f"Unknown message type: {msg_type}")
 
@@ -188,9 +193,16 @@ class WebSocketServer:
             # Cleanup orphaned uploads from this connection
             await self._cleanup_orphaned_uploads()
 
+            self._pending_artwork.clear()
+
             if self.connected_hub and self.connected_hub.get("id") == hub_id:
+                self.stop_telemetry()
+                self.stop_console_log()
+                self.stop_game_log()
                 self.connected_hub = None
                 try:
+                    # Tell JS frontend to remove console hook
+                    await self.plugin.notify_frontend("console_log_toggle", {"enabled": False})
                     await self.plugin.notify_frontend("hub_disconnected", {})
                 except Exception as e:
                     decky.logger.error(f"Failed to notify hub_disconnected: {e}")
@@ -209,16 +221,28 @@ class WebSocketServer:
         # Check if token is valid
         if token and hub_id and self.plugin.pairing.validate_token(hub_id, token):
             self.connected_hub = {"id": hub_id, "name": hub_name, "version": hub_version, "platform": hub_platform}
+            tel_enabled = self.plugin.settings.getSetting("telemetry_enabled", False)
+            tel_interval = self.plugin.settings.getSetting("telemetry_interval", 2)
+            cl_enabled = self.plugin.settings.getSetting("console_log_enabled", False)
             await self.send(websocket, msg_id, "agent_status", {
                 "name": self.plugin.agent_name,
                 "version": self.plugin.version,
                 "platform": "linux",
                 "acceptConnections": self.plugin.accept_connections,
+                "telemetryEnabled": tel_enabled,
+                "telemetryInterval": tel_interval,
+                "consoleLogEnabled": cl_enabled,
             })
             await self.plugin.notify_frontend("hub_connected", {
                 "name": hub_name,
                 "version": hub_version,
             })
+            # Start telemetry if enabled
+            if tel_enabled:
+                self.start_telemetry(tel_interval)
+            # Start console log if enabled
+            if cl_enabled:
+                self.start_console_log()
             return hub_id, True
 
         # Need pairing
@@ -635,6 +659,127 @@ class WebSocketServer:
         del self.uploads[upload_id]
 
         await self.send(websocket, msg_id, "operation_result", result)
+
+    # ── Telemetry ─────────────────────────────────────────────────────────
+
+    def start_telemetry(self, interval: float) -> None:
+        """Start sending telemetry data to the connected Hub."""
+        if not self.connected_hub or not self.plugin.telemetry:
+            return
+        self.plugin.telemetry.start(interval, self._send_telemetry_data)
+        decky.logger.info(f"Telemetry streaming started (interval={interval}s)")
+
+    def stop_telemetry(self) -> None:
+        """Stop sending telemetry data."""
+        if self.plugin.telemetry:
+            self.plugin.telemetry.stop()
+
+    async def _send_telemetry_data(self, data: dict) -> None:
+        """Callback invoked by TelemetryCollector each tick."""
+        if not self.connected_hub or not self._send_queue:
+            return
+        msg = {
+            "id": str(uuid.uuid4()),
+            "type": "telemetry_data",
+            "payload": data,
+        }
+        await self._send_queue.put(json.dumps(msg))
+
+    async def send_telemetry_status(self) -> None:
+        """Notify the Hub about telemetry enabled/interval changes."""
+        if not self.connected_hub or not self._send_queue:
+            return
+        msg = {
+            "id": str(uuid.uuid4()),
+            "type": "telemetry_status",
+            "payload": {
+                "enabled": self.plugin.settings.getSetting("telemetry_enabled", False),
+                "interval": self.plugin.settings.getSetting("telemetry_interval", 2),
+            },
+        }
+        await self._send_queue.put(json.dumps(msg))
+
+    # ── Console Log ────────────────────────────────────────────────────────
+
+    async def handle_set_console_log_filter(self, websocket, msg_id: str, payload: dict) -> None:
+        """Handle set_console_log_filter: update log level bitmask."""
+        mask = payload.get("levelMask", 15)
+        if self.plugin.console_log:
+            self.plugin.console_log.set_level_mask(mask)
+        decky.logger.info(f"Console log filter updated: mask=0x{mask:02x}")
+        await self.send(websocket, msg_id, "set_console_log_filter", {"levelMask": mask})
+
+    async def handle_set_console_log_enabled(self, websocket, msg_id: str, payload: dict) -> None:
+        """Handle set_console_log_enabled: toggle console log streaming remotely."""
+        enabled = payload.get("enabled", False)
+        await self.plugin.set_console_log_enabled(enabled)
+        decky.logger.info(f"Console log enabled (remote): {enabled}")
+        await self.send(websocket, msg_id, "set_console_log_enabled", {"enabled": enabled})
+
+    def start_console_log(self) -> None:
+        """Start sending console log data to the connected Hub."""
+        if not self.connected_hub or not self.plugin.console_log:
+            return
+        self.plugin.console_log.start(self._send_console_log_data)
+        decky.logger.info("Console log streaming started")
+
+    def stop_console_log(self) -> None:
+        """Stop sending console log data."""
+        if self.plugin.console_log:
+            self.plugin.console_log.stop()
+
+    async def _send_console_log_data(self, batch: dict) -> None:
+        """Callback invoked by ConsoleLogCollector each flush."""
+        if not self.connected_hub or not self._send_queue:
+            return
+        msg = {
+            "id": str(uuid.uuid4()),
+            "type": "console_log_data",
+            "payload": batch,
+        }
+        await self._send_queue.put(json.dumps(msg))
+
+    async def send_console_log_status(self) -> None:
+        """Notify the Hub about console log enabled/disabled changes."""
+        if not self.connected_hub or not self._send_queue:
+            return
+        level_mask = 15  # default
+        if self.plugin.console_log:
+            level_mask = self.plugin.console_log.level_mask
+        msg = {
+            "id": str(uuid.uuid4()),
+            "type": "console_log_status",
+            "payload": {
+                "enabled": self.plugin.settings.getSetting("console_log_enabled", False),
+                "levelMask": level_mask,
+            },
+        }
+        await self._send_queue.put(json.dumps(msg))
+
+    # ── Game Log Wrapper ────────────────────────────────────────────────────
+
+    def start_game_log(self, app_id: int) -> None:
+        """Start tailing game log for the given appId."""
+        if not self.connected_hub or not self.plugin.game_log_tailer:
+            return
+        self.plugin.game_log_tailer.start(app_id, self._send_game_log_data)
+        decky.logger.info(f"Game log tailing started for appId={app_id}")
+
+    def stop_game_log(self) -> None:
+        """Stop tailing game log."""
+        if self.plugin.game_log_tailer:
+            self.plugin.game_log_tailer.stop()
+
+    async def _send_game_log_data(self, batch: dict) -> None:
+        """Callback invoked by GameLogTailer — reuses console_log_data channel."""
+        if not self.connected_hub or not self._send_queue:
+            return
+        msg = {
+            "id": str(uuid.uuid4()),
+            "type": "console_log_data",
+            "payload": batch,
+        }
+        await self._send_queue.put(json.dumps(msg))
 
     async def send(self, websocket, msg_id: str, msg_type: str, payload):
         """Send a JSON message via the write queue."""

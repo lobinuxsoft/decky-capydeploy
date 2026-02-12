@@ -11,10 +11,11 @@ import {
 } from "@decky/ui";
 import { call, toaster } from "@decky/api";
 import { VFC, useState, useEffect, useCallback } from "react";
-import { FaGamepad, FaTrash, FaFolderOpen, FaChevronDown, FaChevronRight } from "react-icons/fa6";
+import { FaGamepad, FaTrash, FaFolderOpen, FaChevronDown, FaChevronRight, FaTerminal } from "react-icons/fa6";
 import { colors } from "../styles/theme";
 import { usePanelState } from "../hooks/usePanelState";
 import ConfirmActionModal from "./ConfirmActionModal";
+import { runWithConsoleLog } from "../patches/contextMenuPatch";
 
 import mascotUrl from "../../assets/mascot.gif";
 
@@ -29,6 +30,7 @@ interface InstalledGame {
   name: string;
   path: string;
   size: number;
+  appId: number;
 }
 
 interface InstalledGamesProps {
@@ -134,12 +136,22 @@ const InstalledGames: VFC<InstalledGamesProps> = ({ installPath, refreshTrigger 
               description={formatSize(game.size)}
               icon={<FaGamepad color={colors.capy} />}
             >
-              <Focusable
-                className="cd-icon-btn"
-                onClick={() => handleUninstall(game)}
-                style={{ opacity: uninstalling === game.name ? 0.3 : 1 }}
-              >
-                <FaTrash size={14} color={colors.destructive} />
+              <Focusable style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                {game.appId > 0 && (
+                  <Focusable
+                    className="cd-icon-btn"
+                    onClick={() => runWithConsoleLog(game.appId)}
+                  >
+                    <FaTerminal size={14} color={colors.primary} />
+                  </Focusable>
+                )}
+                <Focusable
+                  className="cd-icon-btn"
+                  onClick={() => handleUninstall(game)}
+                  style={{ opacity: uninstalling === game.name ? 0.3 : 1 }}
+                >
+                  <FaTrash size={14} color={colors.destructive} />
+                </Focusable>
               </Focusable>
             </Field>
           </PanelSectionRow>
