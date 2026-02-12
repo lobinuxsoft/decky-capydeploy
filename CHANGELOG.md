@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 For the full CapyDeploy project changelog, see the [main project](https://github.com/lobinuxsoft/capydeploy/blob/master/CHANGELOG.md).
 
+## [0.6.0](https://github.com/lobinuxsoft/decky-capydeploy/compare/v0.5.0...v0.6.0) (2026-02-12)
+
+
+### Features
+
+* telemetría, console log y game log wrapper ([#3](https://github.com/lobinuxsoft/decky-capydeploy/issues/3)) ([0398b59](https://github.com/lobinuxsoft/decky-capydeploy/commit/0398b590f4986d6b0f3d574056c4e0d17d9287d3))
+
+
+### Bug Fixes
+
+* correct plugin download link to standalone repo release ([9c7775f](https://github.com/lobinuxsoft/decky-capydeploy/commit/9c7775f85bd0c31107eacb24e09577d04ea43398))
+* handle first-time submodule add in store-submit workflow ([f8813d8](https://github.com/lobinuxsoft/decky-capydeploy/commit/f8813d8db22189fbe5789b52a2b283bd262a121a))
+* use fixed asset name for stable latest download URL ([7ad0789](https://github.com/lobinuxsoft/decky-capydeploy/commit/7ad07893df05aff8545951b06b02168bb8cd0695))
+
 ## [0.5.0](https://github.com/lobinuxsoft/decky-capydeploy/compare/v0.4.0...v0.5.0) (2026-02-09)
 
 
