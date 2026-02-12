@@ -198,6 +198,7 @@ class WebSocketServer:
             if self.connected_hub and self.connected_hub.get("id") == hub_id:
                 self.stop_telemetry()
                 self.stop_console_log()
+                self.stop_game_log()
                 self.connected_hub = None
                 try:
                     # Tell JS frontend to remove console hook
@@ -752,6 +753,31 @@ class WebSocketServer:
                 "enabled": self.plugin.settings.getSetting("console_log_enabled", False),
                 "levelMask": level_mask,
             },
+        }
+        await self._send_queue.put(json.dumps(msg))
+
+    # ── Game Log Wrapper ────────────────────────────────────────────────────
+
+    def start_game_log(self, app_id: int) -> None:
+        """Start tailing game log for the given appId."""
+        if not self.connected_hub or not self.plugin.game_log_tailer:
+            return
+        self.plugin.game_log_tailer.start(app_id, self._send_game_log_data)
+        decky.logger.info(f"Game log tailing started for appId={app_id}")
+
+    def stop_game_log(self) -> None:
+        """Stop tailing game log."""
+        if self.plugin.game_log_tailer:
+            self.plugin.game_log_tailer.stop()
+
+    async def _send_game_log_data(self, batch: dict) -> None:
+        """Callback invoked by GameLogTailer — reuses console_log_data channel."""
+        if not self.connected_hub or not self._send_queue:
+            return
+        msg = {
+            "id": str(uuid.uuid4()),
+            "type": "console_log_data",
+            "payload": batch,
         }
         await self._send_queue.put(json.dumps(msg))
 

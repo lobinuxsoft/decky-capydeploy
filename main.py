@@ -45,6 +45,11 @@ try:
 except ImportError:
     ConsoleLogCollector = None  # type: ignore
 
+try:
+    from game_log import GameLogTailer
+except ImportError:
+    GameLogTailer = None  # type: ignore
+
 def _read_version() -> str:
     """Read version from package.json at plugin directory."""
     try:
@@ -65,6 +70,8 @@ class Plugin:
     mdns_service: Optional[MDNSService]
     telemetry: TelemetryCollector
     console_log: ConsoleLogCollector
+    game_log_tailer: Optional[object]
+    _active_game_logs: set  # appIds currently being logged via context menu
     agent_id: str
     agent_name: str
     accept_connections: bool
@@ -91,6 +98,8 @@ class Plugin:
         self.mdns_service = None
         self.telemetry = TelemetryCollector() if TelemetryCollector else None
         self.console_log = ConsoleLogCollector() if ConsoleLogCollector else None
+        self.game_log_tailer = GameLogTailer() if GameLogTailer else None
+        self._active_game_logs = set()
 
         # Clean stale event queues from previous sessions
         for key in list(self.settings.settings.keys()):
@@ -132,6 +141,8 @@ class Plugin:
 
     async def _unload(self):
         """Called when the plugin is unloaded."""
+        if self.game_log_tailer:
+            self.game_log_tailer.stop()
         if self.console_log:
             self.console_log.stop()
         if self.telemetry:
@@ -288,6 +299,27 @@ class Plugin:
                     pass
             self.console_log.add_entry(level, text, "console", url, line, segments)
 
+    async def get_wrapper_path(self):
+        """Return the path to the game log wrapper script."""
+        return os.path.join(PLUGIN_DIR, "bin", "capydeploy-game-wrapper.sh")
+
+    async def notify_game_log_start(self, app_id: int):
+        """Mark an appId as actively being logged (context menu launch)."""
+        self._active_game_logs.add(app_id)
+        decky.logger.info(f"Game log start notified: appId={app_id}")
+
+    async def game_lifecycle_event(self, app_id: int, running: bool):
+        """Called by frontend when a game starts or stops."""
+        decky.logger.info(f"Game lifecycle: appId={app_id} running={running}")
+        if app_id not in self._active_game_logs:
+            return
+
+        if running:
+            self.ws_server.start_game_log(app_id)
+        else:
+            self.ws_server.stop_game_log()
+            self._active_game_logs.discard(app_id)
+
     async def log_info(self, message: str):
         """Log an info message."""
         decky.logger.info(f"[CapyDeploy] {message}")
@@ -340,9 +372,20 @@ class Plugin:
         return False
 
     async def get_installed_games(self):
-        """Get list of games installed in the install path."""
+        """Get list of games installed in the install path, with appId from tracked shortcuts."""
         games = []
         expanded_path = expand_path(self.install_path)
+        tracked = self.settings.getSetting("tracked_shortcuts", [])
+
+        # Build name → appId lookup from tracked shortcuts
+        name_to_appid: dict[str, int] = {}
+        for sc in tracked:
+            app_id = sc.get("appId", 0)
+            for key in ("gameName", "name"):
+                name = sc.get(key, "")
+                if name and app_id:
+                    name_to_appid[name] = app_id
+
         try:
             if os.path.exists(expanded_path):
                 for name in os.listdir(expanded_path):
@@ -356,10 +399,12 @@ class Plugin:
                                     total_size += os.path.getsize(fp)
                                 except OSError:
                                     pass
+                        app_id = name_to_appid.get(name, 0)
                         games.append({
                             "name": name,
                             "path": game_path,
                             "size": total_size,
+                            "appId": app_id,
                         })
         except Exception as e:
             decky.logger.error(f"Error listing games: {e}")

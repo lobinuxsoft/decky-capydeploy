@@ -21,6 +21,7 @@ import {
 } from "./eventPoller";
 import type { OperationEvent, UploadProgress } from "./types";
 import { removeConsoleHook } from "./consoleHook";
+import contextMenuPatch, { getLibraryContextMenu, initWrapperPath } from "./patches/contextMenuPatch";
 
 // Import mascot
 import mascotUrl from "../assets/mascot.gif";
@@ -115,11 +116,18 @@ const CapyDeployPanel: VFC = () => {
 export default definePlugin(() => {
   startBackgroundPolling();
 
+  // Cache wrapper path (async, but fast — just one backend call).
+  initWrapperPath();
+
+  // Patch the game context menu (lazy lookup, first call resolves the component).
+  const menuPatches = contextMenuPatch(getLibraryContextMenu());
+
   return {
     title: <div className={staticClasses.Title}>CapyDeploy</div>,
     content: <CapyDeployPanel />,
     icon: <CapyIcon />,
     onDismount() {
+      menuPatches?.unpatch();
       removeConsoleHook();
       stopBackgroundPolling();
     },
