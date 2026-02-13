@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 For the full CapyDeploy project changelog, see the [main project](https://github.com/lobinuxsoft/capydeploy/blob/master/CHANGELOG.md).
 
+## [0.6.1](https://github.com/lobinuxsoft/decky-capydeploy/compare/v0.6.0...v0.6.1) (2026-02-13)
+
+
+### Bug Fixes
+
+* **ci:** incluir archivos de telemetría y console log en build y release ([fbd1ce6](https://github.com/lobinuxsoft/decky-capydeploy/commit/fbd1ce652712e89fc967214158b76659421c683e))
+
 ## [0.6.0](https://github.com/lobinuxsoft/decky-capydeploy/compare/v0.5.0...v0.6.0) (2026-02-12)
 
 
