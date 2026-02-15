@@ -16,7 +16,7 @@ import decky  # type: ignore
 
 from upload import UploadSession
 from artwork import download_artwork, apply_from_data
-from steam_utils import get_steam_users, expand_path, fix_permissions
+from steam_utils import get_steam_users, expand_path
 from pairing import PAIRING_CODE_EXPIRY
 
 if TYPE_CHECKING:
@@ -372,12 +372,12 @@ class WebSocketServer:
         })
 
     async def handle_restart_steam(self, websocket, msg_id: str):
-        """Restart Steam."""
+        """Gracefully shutdown Steam. In Gaming Mode the session manager restarts it automatically."""
         import subprocess
 
         try:
             subprocess.Popen(
-                ["systemctl", "restart", "steam"],
+                ["steam", "-shutdown"],
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
             )
@@ -593,9 +593,6 @@ class WebSocketServer:
 
         session.status = "complete"
         decky.logger.info(f"Upload complete: {session.game_name}")
-
-        # Fix ownership/permissions — Decky runs as root but Steam runs as the real user
-        fix_permissions(session.install_path)
 
         result = {
             "success": True,
