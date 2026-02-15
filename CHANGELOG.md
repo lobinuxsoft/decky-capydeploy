@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 For the full CapyDeploy project changelog, see the [main project](https://github.com/lobinuxsoft/capydeploy/blob/master/CHANGELOG.md).
 
+## [0.6.2](https://github.com/lobinuxsoft/decky-capydeploy/compare/v0.6.1...v0.6.2) (2026-02-15)
+
+
+### Bug Fixes
+
+* remove root flag and fix_permissions workaround ([a48e18c](https://github.com/lobinuxsoft/decky-capydeploy/commit/a48e18c667e68cecda4fd559ccd48f77dbff93b4))
+
 ## [0.6.1](https://github.com/lobinuxsoft/decky-capydeploy/compare/v0.6.0...v0.6.1) (2026-02-13)
 
 
