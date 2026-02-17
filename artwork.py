@@ -66,21 +66,34 @@ def _validate_artwork_url(url: str) -> None:
         # Not a valid IP — treat as a domain name (allowed)
 
 
-def _make_ssl_context() -> ssl.SSLContext:
-    """Create an SSL context with best-effort certificate loading.
+_CA_PATHS = (
+    "/etc/pki/tls/cert.pem",
+    "/etc/ssl/certs/ca-certificates.crt",
+    "/etc/pki/tls/certs/ca-bundle.crt",
+    "/etc/ssl/cert.pem",
+)
 
-    Decky Loader runs as root with its own Python — the system cert store
-    may not be configured.  We try to load certs, and if the store is empty,
-    we disable verification so CDN downloads still work.
+
+def _make_ssl_context() -> ssl.SSLContext:
+    """Create an SSL context with system CA certificates.
+
+    Decky Loader embeds Python with a statically-linked OpenSSL whose default
+    cert paths don't match the host system.  We fall back to well-known Linux
+    CA bundle locations before giving up.
+
+    Raises RuntimeError if no CA certificates are available (fail secure).
     """
     ctx = ssl.create_default_context()
-    try:
-        ctx.load_default_certs()
-    except Exception:
-        pass
     if not ctx.get_ca_certs():
-        ctx.check_hostname = False
-        ctx.verify_mode = ssl.CERT_NONE
+        for ca_path in _CA_PATHS:
+            if os.path.isfile(ca_path):
+                ctx.load_verify_locations(ca_path)
+                break
+    if not ctx.get_ca_certs():
+        raise RuntimeError(
+            "No CA certificates available — refusing to download over HTTPS "
+            "without verification. Check system CA bundle."
+        )
     return ctx
 
 
