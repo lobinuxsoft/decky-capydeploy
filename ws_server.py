@@ -25,6 +25,23 @@ if TYPE_CHECKING:
 CHUNK_SIZE = 1024 * 1024  # 1MB
 
 
+def _validate_safe_path(file_path: str) -> None:
+    """Validate that a relative path does not escape its base directory.
+
+    Raises ValueError on absolute paths, parent traversal (..), or empty paths.
+    """
+    if not file_path:
+        raise ValueError("empty path")
+
+    if os.path.isabs(file_path):
+        raise ValueError(f"absolute path not allowed: {file_path}")
+
+    normalized = os.path.normpath(file_path)
+
+    if normalized == ".." or normalized.startswith(".." + os.sep):
+        raise ValueError(f"parent directory traversal not allowed: {file_path}")
+
+
 class WebSocketServer:
     """WebSocket server for Hub connections."""
 
@@ -392,6 +409,12 @@ class WebSocketServer:
         total_size = payload.get("totalSize", 0)
         files = payload.get("files", [])
 
+        try:
+            _validate_safe_path(game_name)
+        except ValueError as e:
+            await self.send_error(websocket, msg_id, 400, f"invalid game name: {e}")
+            return
+
         upload_id = f"upload-{int(time.time())}-{random.randint(1000, 9999)}"
         session = UploadSession(upload_id, game_name, total_size, files)
         expanded = expand_path(self.plugin.install_path)
@@ -420,6 +443,12 @@ class WebSocketServer:
         session = self.uploads.get(upload_id)
         if not session:
             await self.send_error(websocket, msg_id, 404, "Upload not found")
+            return
+
+        try:
+            _validate_safe_path(file_path)
+        except ValueError as e:
+            await self.send_error(websocket, msg_id, 400, f"invalid file path: {e}")
             return
 
         full_path = os.path.join(session.install_path, file_path)
