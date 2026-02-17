@@ -32,6 +32,7 @@ export interface UICallbacks {
   onProgress?: (progress: UploadProgress) => void;
   onPairingCode?: (code: string) => void;
   onPairingClear?: () => void;
+  onPairingLocked?: (remainingSeconds: number) => void;
   onRefreshStatus?: () => void;
 }
 
@@ -368,6 +369,26 @@ async function pollAllEvents() {
         });
       }
     } while (pairingSuccess?.data);
+
+    // ── Pairing locked out (drain queue) ──
+
+    let pairingLocked;
+    do {
+      pairingLocked = await call<[string], { timestamp: number; data: { remainingSeconds: number } } | null>(
+        "get_event",
+        "pairing_locked"
+      );
+      if (pairingLocked?.data) {
+        pairingModalHandle?.Close();
+        pairingModalHandle = null;
+        _uiCallbacks.onPairingClear?.();
+        _uiCallbacks.onPairingLocked?.(pairingLocked.data.remainingSeconds);
+        brandToast({
+          title: "Pairing locked",
+          body: "Too many failed attempts",
+        });
+      }
+    } while (pairingLocked?.data);
 
     // ── Hub connection state changes (drain queue) ──
 

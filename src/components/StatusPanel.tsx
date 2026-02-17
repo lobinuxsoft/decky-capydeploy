@@ -27,6 +27,8 @@ import {
   FaChevronRight,
   FaChartLine,
   FaTerminal,
+  FaLock,
+  FaLockOpen,
 } from "react-icons/fa6";
 import { colors } from "../styles/theme";
 import { usePanelState } from "../hooks/usePanelState";
@@ -44,6 +46,8 @@ interface StatusPanelProps {
   connected: boolean;
   hubName: string | null;
   pairingCode: string | null;
+  lockoutRemaining: number;
+  onResetLockout: () => void;
   agentName: string;
   platform: string;
   version: string;
@@ -67,6 +71,8 @@ const StatusPanel: VFC<StatusPanelProps> = ({
   connected,
   hubName,
   pairingCode,
+  lockoutRemaining,
+  onResetLockout,
   agentName,
   platform,
   version,
@@ -173,7 +179,36 @@ const StatusPanel: VFC<StatusPanelProps> = ({
                   </PanelSectionRow>
                 )}
 
-                {pairingCode && (
+                {lockoutRemaining > 0 && (
+                  <PanelSectionRow>
+                    <Field
+                      label="Pairing locked"
+                      description="Too many failed attempts"
+                      icon={<FaLock color={colors.destructive} />}
+                    >
+                      <Focusable style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                        <span className="cd-mono" style={{ color: colors.destructive }}>
+                          {Math.floor(lockoutRemaining / 60)}:{String(lockoutRemaining % 60).padStart(2, "0")}
+                        </span>
+                      </Focusable>
+                    </Field>
+                  </PanelSectionRow>
+                )}
+
+                {lockoutRemaining > 0 && (
+                  <PanelSectionRow>
+                    <Field
+                      label="Reset lockout"
+                      description="Allow pairing again"
+                      icon={<FaLockOpen color={colors.capy} />}
+                      onClick={onResetLockout}
+                    >
+                      <span className="cd-text-primary">Reset</span>
+                    </Field>
+                  </PanelSectionRow>
+                )}
+
+                {pairingCode && lockoutRemaining <= 0 && (
                   <PanelSectionRow>
                     <Field
                       label="Pairing code"

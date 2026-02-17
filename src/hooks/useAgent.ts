@@ -3,7 +3,7 @@
  * Event polling is handled by background poller in index.tsx.
  */
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, type Dispatch, type SetStateAction } from "react";
 import { call } from "@decky/api";
 
 export interface AgentStatus {
@@ -46,6 +46,9 @@ export interface UseAgentReturn {
   refreshStatus: () => Promise<void>;
   pairingCode: string | null;
   setPairingCode: (code: string | null) => void;
+  lockoutRemaining: number;
+  setLockoutRemaining: Dispatch<SetStateAction<number>>;
+  resetLockout: () => Promise<void>;
   setTelemetryEnabled: (enabled: boolean) => Promise<void>;
   setTelemetryInterval: (seconds: number) => Promise<void>;
   setConsoleLogEnabled: (enabled: boolean) => Promise<void>;
@@ -55,12 +58,18 @@ export function useAgent(): UseAgentReturn {
   const [enabled, setEnabledState] = useState(false);
   const [status, setStatus] = useState<AgentStatus | null>(null);
   const [pairingCode, setPairingCode] = useState<string | null>(null);
+  const [lockoutRemaining, setLockoutRemaining] = useState(0);
 
   const refreshStatus = useCallback(async () => {
     try {
       const result = await call<[], AgentStatus>("get_status");
       setStatus(result);
       setEnabledState(result.enabled);
+
+      const lockout = await call<[], { locked: boolean; remainingSeconds: number }>("get_pairing_lockout");
+      if (lockout.locked) {
+        setLockoutRemaining(lockout.remainingSeconds);
+      }
     } catch (e) {
       console.error("Failed to get status:", e);
     }
@@ -94,6 +103,15 @@ export function useAgent(): UseAgentReturn {
     }
   }, [refreshStatus]);
 
+  const resetLockout = useCallback(async () => {
+    try {
+      await call<[], boolean>("reset_pairing_lockout");
+      setLockoutRemaining(0);
+    } catch (e) {
+      console.error("Failed to reset lockout:", e);
+    }
+  }, []);
+
   const setConsoleLogEnabled = useCallback(async (value: boolean) => {
     try {
       await call<[boolean], void>("set_console_log_enabled", value);
@@ -115,6 +133,9 @@ export function useAgent(): UseAgentReturn {
     refreshStatus,
     pairingCode,
     setPairingCode,
+    lockoutRemaining,
+    setLockoutRemaining,
+    resetLockout,
     setTelemetryEnabled,
     setTelemetryInterval,
     setConsoleLogEnabled,

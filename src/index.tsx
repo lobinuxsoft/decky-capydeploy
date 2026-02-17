@@ -36,8 +36,18 @@ const CapyDeployPanel: VFC = () => {
 
   const {
     enabled, setEnabled, status, pairingCode, setPairingCode, refreshStatus,
+    lockoutRemaining, setLockoutRemaining, resetLockout,
     setTelemetryEnabled, setTelemetryInterval, setConsoleLogEnabled,
   } = useAgent();
+
+  // Countdown timer for lockout
+  useEffect(() => {
+    if (lockoutRemaining <= 0) return;
+    const timer = setInterval(() => {
+      setLockoutRemaining((prev: number) => (prev <= 1 ? 0 : prev - 1));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [lockoutRemaining > 0]);
 
   // Register UI callbacks so background poller can update React state
   useEffect(() => {
@@ -56,6 +66,7 @@ const CapyDeployPanel: VFC = () => {
       onProgress: (progress) => setUploadProgress(progress),
       onPairingCode: (code) => setPairingCode(code),
       onPairingClear: () => setPairingCode(null),
+      onPairingLocked: (remaining) => setLockoutRemaining(remaining),
       onRefreshStatus: () => refreshStatus(),
     });
 
@@ -89,6 +100,8 @@ const CapyDeployPanel: VFC = () => {
         connected={status?.connected ?? false}
         hubName={status?.hubName ?? null}
         pairingCode={pairingCode}
+        lockoutRemaining={lockoutRemaining}
+        onResetLockout={resetLockout}
         agentName={status?.agentName ?? "CapyDeploy Agent"}
         platform={status?.platform ?? "linux"}
         version={status?.version ?? "0.1.0"}

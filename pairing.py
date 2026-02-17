@@ -29,8 +29,19 @@ class PairingManager:
         self.failed_attempts: int = 0
         self.lockout_until: float = 0
 
-    def generate_code(self, hub_id: str, hub_name: str, hub_platform: str = "") -> str:
-        """Generate a new pairing code."""
+    def is_locked_out(self) -> bool:
+        """Return True if pairing is currently locked out."""
+        return time.time() < self.lockout_until
+
+    def lockout_remaining(self) -> int:
+        """Return seconds remaining in lockout, or 0 if not locked."""
+        remaining = self.lockout_until - time.time()
+        return max(0, int(remaining))
+
+    def generate_code(self, hub_id: str, hub_name: str, hub_platform: str = "") -> Optional[str]:
+        """Generate a new pairing code. Returns None if locked out."""
+        if self.is_locked_out():
+            return None
         self.pending_code = "".join(secrets.choice(string.digits) for _ in range(PAIRING_CODE_LENGTH))
         self.pending_hub_id = hub_id
         self.pending_hub_name = hub_name
@@ -82,6 +93,12 @@ class PairingManager:
         self.pending_hub_platform = None
 
         return token
+
+    def reset_lockout(self) -> None:
+        """Force-reset the lockout state."""
+        self.lockout_until = 0
+        self.failed_attempts = 0
+        decky.logger.info("Pairing lockout manually reset")
 
     def validate_token(self, hub_id: str, token: str) -> bool:
         """Check if a token is valid for a hub."""

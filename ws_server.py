@@ -268,6 +268,14 @@ class WebSocketServer:
             return None, False
 
         code = self.plugin.pairing.generate_code(hub_id, hub_name, hub_platform)
+        if code is None:
+            remaining = self.plugin.pairing.lockout_remaining()
+            await self.send_error(
+                websocket, msg_id, 429,
+                f"Pairing locked out. Try again in {remaining}s",
+            )
+            return hub_id, False
+
         await self.send(websocket, msg_id, "pairing_required", {
             "code": code,
             "expiresIn": PAIRING_CODE_EXPIRY,
@@ -285,9 +293,19 @@ class WebSocketServer:
             await self.send(websocket, msg_id, "pair_success", {"token": token})
             await self.plugin.notify_frontend("pairing_success", {})
             return True
+
+        # Check if this failure triggered a lockout
+        if self.plugin.pairing.is_locked_out():
+            remaining = self.plugin.pairing.lockout_remaining()
+            await self.send(websocket, msg_id, "pair_failed", {
+                "reason": f"Too many failed attempts. Locked for {remaining}s",
+            })
+            await self.plugin.notify_frontend("pairing_locked", {
+                "remainingSeconds": remaining,
+            })
         else:
             await self.send(websocket, msg_id, "pair_failed", {"reason": "Invalid code"})
-            return False
+        return False
 
     async def handle_get_info(self, websocket, msg_id: str):
         """Return agent info."""

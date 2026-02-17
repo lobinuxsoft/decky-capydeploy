@@ -81,7 +81,7 @@ class Plugin:
     # Events that MUST NOT be lost — use append queue instead of overwrite
     QUEUED_EVENTS = {
         "operation_event", "create_shortcut", "remove_shortcut",
-        "update_artwork", "pairing_code", "pairing_success",
+        "update_artwork", "pairing_code", "pairing_success", "pairing_locked",
         "hub_connected", "hub_disconnected", "server_error",
         "console_log_toggle",
     }
@@ -370,6 +370,18 @@ class Plugin:
             decky.logger.info(f"Revoked hub: {hub_id}")
             return True
         return False
+
+    async def get_pairing_lockout(self) -> dict:
+        """Get pairing lockout status."""
+        return {
+            "locked": self.pairing.is_locked_out(),
+            "remainingSeconds": self.pairing.lockout_remaining(),
+        }
+
+    async def reset_pairing_lockout(self) -> bool:
+        """Force-reset the pairing lockout."""
+        self.pairing.reset_lockout()
+        return True
 
     async def get_installed_games(self):
         """Get list of games installed in the install path, with appId from tracked shortcuts."""
