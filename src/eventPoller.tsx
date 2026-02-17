@@ -197,6 +197,7 @@ async function handleUpdateArtwork(event: UpdateArtworkEvent) {
 // ── Progress modal management ──────────────────────────────────────────────
 
 let progressModalHandle: { Close: () => void } | null = null;
+let pairingModalHandle: { Close: () => void } | null = null;
 
 function showProgressModal() {
   if (!progressModalHandle) {
@@ -344,7 +345,7 @@ async function pollAllEvents() {
       if (pairingEvent?.data) {
         const code = pairingEvent.data.code;
         _uiCallbacks.onPairingCode?.(code);
-        showModal(<PairingCodeModal code={code} />);
+        pairingModalHandle = showModal(<PairingCodeModal code={code} />);
       }
     } while (pairingEvent?.data);
 
@@ -357,6 +358,8 @@ async function pollAllEvents() {
         "pairing_success"
       );
       if (pairingSuccess?.data) {
+        pairingModalHandle?.Close();
+        pairingModalHandle = null;
         _uiCallbacks.onPairingClear?.();
         _uiCallbacks.onRefreshStatus?.();
         brandToast({
