@@ -2,7 +2,7 @@
 Pairing code and token management for Hub authentication.
 """
 
-import random
+import secrets
 import string
 import time
 from typing import Optional
@@ -26,7 +26,7 @@ class PairingManager:
 
     def generate_code(self, hub_id: str, hub_name: str, hub_platform: str = "") -> str:
         """Generate a new pairing code."""
-        self.pending_code = "".join(random.choices(string.digits, k=PAIRING_CODE_LENGTH))
+        self.pending_code = "".join(secrets.choice(string.digits) for _ in range(PAIRING_CODE_LENGTH))
         self.pending_hub_id = hub_id
         self.pending_hub_name = hub_name
         self.pending_hub_platform = hub_platform
@@ -41,7 +41,7 @@ class PairingManager:
             return None
 
         # Generate token
-        token = "".join(random.choices(string.ascii_letters + string.digits, k=32))
+        token = secrets.token_urlsafe(32)
 
         # Save authorized hub
         authorized = self.settings.getSetting("authorized_hubs", {})
