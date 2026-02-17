@@ -5,8 +5,10 @@ Includes retry logic for the VDF race condition when Steam hasn't flushed yet.
 
 import asyncio
 import base64
+import ipaddress
 import os
 import ssl
+import urllib.parse
 import urllib.request
 import decky  # type: ignore
 
@@ -30,6 +32,38 @@ _EXT_MAP = {
     "image/jpeg": "jpg",
     "image/webp": "webp",
 }
+
+
+_BLOCKED_HOSTS = {"localhost", "127.0.0.1", "0.0.0.0", "::1", "[::1]", "169.254.169.254"}
+
+
+def _validate_artwork_url(url: str) -> None:
+    """Validate that a URL is safe to fetch (anti-SSRF).
+
+    Only allows http/https schemes and blocks requests to private/internal
+    networks.  Raises ValueError if the URL is unsafe.
+    """
+    parsed = urllib.parse.urlparse(url)
+
+    if parsed.scheme not in ("http", "https"):
+        raise ValueError(f"blocked URL scheme '{parsed.scheme}' (only http/https allowed)")
+
+    hostname = parsed.hostname or ""
+    if not hostname:
+        raise ValueError("URL has no hostname")
+
+    if hostname.lower() in _BLOCKED_HOSTS:
+        raise ValueError(f"blocked host: {hostname}")
+
+    try:
+        addr = ipaddress.ip_address(hostname)
+        if addr.is_private or addr.is_loopback or addr.is_link_local or addr.is_reserved:
+            raise ValueError(f"blocked private/reserved IP: {addr}")
+    except ValueError as exc:
+        # Re-raise our own validation errors
+        if "blocked" in str(exc):
+            raise
+        # Not a valid IP — treat as a domain name (allowed)
 
 
 def _make_ssl_context() -> ssl.SSLContext:
@@ -166,6 +200,7 @@ async def download_artwork(artwork: dict) -> dict:
         if not url:
             continue
         try:
+            _validate_artwork_url(url)
             req = urllib.request.Request(url, headers={"User-Agent": "CapyDeploy/0.1"})
             with urllib.request.urlopen(req, timeout=15, context=ssl_ctx) as resp:
                 data = resp.read()
@@ -231,8 +266,6 @@ async def set_shortcut_icon_from_url(app_id: int, icon_url: str) -> bool:
     Downloads directly to the grid directory (no base64 round-trip) and
     updates shortcuts.vdf. Preserves the original file extension from the URL.
     """
-    from urllib.parse import urlparse
-
     steam_dir = get_steam_dir()
     if not steam_dir:
         decky.logger.error("Steam directory not found")
@@ -245,7 +278,7 @@ async def set_shortcut_icon_from_url(app_id: int, icon_url: str) -> bool:
     user_id = users[0]["id"]
 
     # Determine extension from URL path
-    url_path = urlparse(icon_url).path
+    url_path = urllib.parse.urlparse(icon_url).path
     ext = os.path.splitext(url_path)[1] or ".png"
 
     grid_dir = os.path.join(steam_dir, "userdata", user_id, "config", "grid")
@@ -257,6 +290,7 @@ async def set_shortcut_icon_from_url(app_id: int, icon_url: str) -> bool:
     ssl_ctx = _make_ssl_context()
 
     try:
+        _validate_artwork_url(icon_url)
         req = urllib.request.Request(icon_url, headers={"User-Agent": "CapyDeploy/0.1"})
         with urllib.request.urlopen(req, timeout=15, context=ssl_ctx) as resp:
             data = resp.read()
