@@ -6,6 +6,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 For the full CapyDeploy project changelog, see the [main project](https://github.com/lobinuxsoft/capydeploy/blob/master/CHANGELOG.md).
 
+## [0.7.0](https://github.com/lobinuxsoft/decky-capydeploy/compare/v0.6.2...v0.7.0) (2026-02-17)
+
+
+### Features
+
+* **ui:** add full lockout UX for pairing rate limiting ([a1f3c2a](https://github.com/lobinuxsoft/decky-capydeploy/commit/a1f3c2af2dd9d712f34440fb888569563e6fe358)), closes [#154](https://github.com/lobinuxsoft/decky-capydeploy/issues/154)
+* **ui:** auto-close pairing code modal on successful pairing ([49aedf0](https://github.com/lobinuxsoft/decky-capydeploy/commit/49aedf088dca92717231d70c052f8cb6723fcb2b))
+
+
+### Bug Fixes
+
+* **security:** add rate limiting to pairing brute-force attempts ([dec0cc1](https://github.com/lobinuxsoft/decky-capydeploy/commit/dec0cc1a06634083407d580a160a0e2a44b008ae)), closes [#154](https://github.com/lobinuxsoft/decky-capydeploy/issues/154)
+* **security:** enforce SSL certificate verification in artwork downloads ([be27686](https://github.com/lobinuxsoft/decky-capydeploy/commit/be27686468490439955e2430c3bc5de2ad6ad8e0)), closes [#152](https://github.com/lobinuxsoft/decky-capydeploy/issues/152)
+* **security:** use cryptographic PRNG for pairing codes and auth tokens ([4138f29](https://github.com/lobinuxsoft/decky-capydeploy/commit/4138f29c8d09f00d3a95450033c03442c08248f0)), closes [#153](https://github.com/lobinuxsoft/decky-capydeploy/issues/153)
+* **security:** validar paths en uploads para prevenir path traversal ([385cfb0](https://github.com/lobinuxsoft/decky-capydeploy/commit/385cfb0acb8d217065a6f52ed2835620004b5268)), closes [#150](https://github.com/lobinuxsoft/decky-capydeploy/issues/150)
+* **security:** validate artwork URLs to prevent SSRF attacks ([b1e788e](https://github.com/lobinuxsoft/decky-capydeploy/commit/b1e788e46d0db898c2e3a9a3a41d46bdab2ab768))
+
 ## [0.6.2](https://github.com/lobinuxsoft/decky-capydeploy/compare/v0.6.1...v0.6.2) (2026-02-15)
 
 
