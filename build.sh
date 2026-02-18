@@ -76,6 +76,11 @@ for pyfile in main.py steam_utils.py mdns_service.py pairing.py upload.py artwor
     cp "$pyfile" "$BUILD_DIR/"
 done
 
+# Copy handler modules
+if [ -d "handlers" ]; then
+    cp -r handlers "$BUILD_DIR/"
+fi
+
 # Copy wrapper scripts
 if [ -d "bin" ]; then
     cp -r bin "$BUILD_DIR/"
