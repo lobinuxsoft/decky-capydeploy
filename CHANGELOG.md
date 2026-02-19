@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 For the full CapyDeploy project changelog, see the [main project](https://github.com/lobinuxsoft/capydeploy/blob/master/CHANGELOG.md).
 
+## [0.7.2](https://github.com/lobinuxsoft/decky-capydeploy/compare/v0.7.1...v0.7.2) (2026-02-19)
+
+
+### Bug Fixes
+
+* **ci:** include handlers directory in release package ([fabc7c4](https://github.com/lobinuxsoft/decky-capydeploy/commit/fabc7c4a1dbc250700dfa90d54b9058830cc0dda))
+
 ## [0.7.1](https://github.com/lobinuxsoft/decky-capydeploy/compare/v0.7.0...v0.7.1) (2026-02-19)
 
 
