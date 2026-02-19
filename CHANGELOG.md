@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 For the full CapyDeploy project changelog, see the [main project](https://github.com/lobinuxsoft/capydeploy/blob/master/CHANGELOG.md).
 
+## [0.8.0](https://github.com/lobinuxsoft/decky-capydeploy/compare/v0.7.2...v0.8.0) (2026-02-19)
+
+
+### Features
+
+* add protocol version negotiation to hub handshake ([b83e20c](https://github.com/lobinuxsoft/decky-capydeploy/commit/b83e20caaa43338fca660aa63f9dcd5c2975b303))
+
 ## [0.7.2](https://github.com/lobinuxsoft/decky-capydeploy/compare/v0.7.1...v0.7.2) (2026-02-19)
 
 
