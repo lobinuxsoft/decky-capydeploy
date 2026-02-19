@@ -61,6 +61,9 @@ jobs:
           for pyfile in main.py steam_utils.py mdns_service.py pairing.py upload.py artwork.py ws_server.py telemetry.py console_log.py game_log.py; do
             cp "$pyfile" "$BUILD_DIR/"
           done
+          if [ -d "handlers" ]; then
+            cp -r handlers "$BUILD_DIR/"
+          fi
           if [ -d "bin" ]; then
             cp -r bin "$BUILD_DIR/"
             chmod +x "$BUILD_DIR/bin/"*.sh
