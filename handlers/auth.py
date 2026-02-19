@@ -11,6 +11,36 @@ from pairing import PAIRING_CODE_EXPIRY
 if TYPE_CHECKING:
     from ws_server import WebSocketServer
 
+# Protocol versioning — must match crates/protocol/src/constants.rs
+PROTOCOL_VERSION = 1
+PROTOCOL_MIN_SUPPORTED = 1
+
+
+def _check_protocol_compatibility(peer_version: int) -> tuple[str, str]:
+    """Check whether a peer's protocol version is compatible.
+
+    Returns (status, reason) where status is one of:
+    "compatible", "deprecated", "incompatible".
+    """
+    effective = 1 if peer_version == 0 else peer_version
+
+    if effective < PROTOCOL_MIN_SUPPORTED:
+        return (
+            "incompatible",
+            f"peer protocol v{effective} is below minimum supported v{PROTOCOL_MIN_SUPPORTED}",
+        )
+
+    if effective > PROTOCOL_VERSION:
+        return (
+            "incompatible",
+            f"peer protocol v{effective} is above our current v{PROTOCOL_VERSION}",
+        )
+
+    if effective < PROTOCOL_VERSION:
+        return ("deprecated", f"peer protocol v{effective} is deprecated")
+
+    return ("compatible", "")
+
 
 async def handle_hub_connected(
     server: WebSocketServer, websocket, msg_id: str, payload: dict
@@ -21,8 +51,18 @@ async def handle_hub_connected(
     hub_version = payload.get("version", "")
     hub_platform = payload.get("platform", "")
     token = payload.get("token", "")
+    hub_proto = payload.get("protocolVersion", 0)
 
-    decky.logger.info(f"Hub connected: {hub_name} v{hub_version} ({hub_platform})")
+    decky.logger.info(
+        f"Hub connected: {hub_name} v{hub_version} ({hub_platform}, proto: v{hub_proto})"
+    )
+
+    # Reject incompatible protocol versions before any auth.
+    compat_status, compat_reason = _check_protocol_compatibility(hub_proto)
+    if compat_status == "incompatible":
+        decky.logger.warning(f"Rejecting hub {hub_id}: {compat_reason}")
+        await server.send_error(websocket, msg_id, 406, compat_reason)
+        return None, False
 
     # Check if token is valid
     if token and hub_id and server.plugin.pairing.validate_token(hub_id, token):
@@ -41,6 +81,7 @@ async def handle_hub_connected(
             "telemetryEnabled": tel_enabled,
             "telemetryInterval": tel_interval,
             "consoleLogEnabled": cl_enabled,
+            "protocolVersion": PROTOCOL_VERSION,
         })
         await server.plugin.notify_frontend("hub_connected", {
             "name": hub_name,
