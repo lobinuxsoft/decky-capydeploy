@@ -1,45 +1,32 @@
-"""
-WebSocket server for Hub connections.
-"""
+"""WebSocket server for Hub connections."""
 
 from __future__ import annotations
 
 import asyncio
 import json
-import os
-import random
-import time
-import uuid
 from typing import Optional, TYPE_CHECKING
 
 import decky  # type: ignore
 
-from upload import UploadSession
-from artwork import download_artwork, apply_from_data
-from steam_utils import get_steam_users, expand_path
-from pairing import PAIRING_CODE_EXPIRY
+from handlers import auth, info, upload, game, telemetry, console_log
 
 if TYPE_CHECKING:
     from main import Plugin
 
-CHUNK_SIZE = 1024 * 1024  # 1MB
-
-
-def _validate_safe_path(file_path: str) -> None:
-    """Validate that a relative path does not escape its base directory.
-
-    Raises ValueError on absolute paths, parent traversal (..), or empty paths.
-    """
-    if not file_path:
-        raise ValueError("empty path")
-
-    if os.path.isabs(file_path):
-        raise ValueError(f"absolute path not allowed: {file_path}")
-
-    normalized = os.path.normpath(file_path)
-
-    if normalized == ".." or normalized.startswith(".." + os.sep):
-        raise ValueError(f"parent directory traversal not allowed: {file_path}")
+HANDLERS = {
+    "get_info": info.handle_get_info,
+    "get_config": info.handle_get_config,
+    "get_steam_users": info.handle_get_steam_users,
+    "init_upload": upload.handle_init_upload,
+    "upload_chunk": upload.handle_upload_chunk,
+    "complete_upload": upload.handle_complete_upload,
+    "cancel_upload": upload.handle_cancel_upload,
+    "list_shortcuts": game.handle_list_shortcuts,
+    "delete_game": game.handle_delete_game,
+    "restart_steam": game.handle_restart_steam,
+    "set_console_log_filter": console_log.handle_set_console_log_filter,
+    "set_console_log_enabled": console_log.handle_set_console_log_enabled,
+}
 
 
 class WebSocketServer:
@@ -48,13 +35,13 @@ class WebSocketServer:
     def __init__(self, plugin: Plugin):
         self.plugin = plugin
         self.server = None
-        self.actual_port: int = 0  # Assigned by OS after start()
+        self.actual_port: int = 0
         self.connected_hub: Optional[dict] = None
-        self.uploads: dict[str, UploadSession] = {}
+        self.uploads: dict = {}
         self._send_queue: Optional[asyncio.Queue] = None
         self._write_task: Optional[asyncio.Task] = None
         self._active_websocket = None
-        self._pending_artwork: dict[str, dict] = {}  # artworkType → {data, format}
+        self._pending_artwork: dict[str, dict] = {}
 
     async def start(self) -> bool:
         """Start the WebSocket server. Returns True on success."""
@@ -65,22 +52,14 @@ class WebSocketServer:
         try:
             import websockets
         except ImportError:
-            decky.logger.error(
-                "websockets package not found. "
-                "Install it on the device: pip install websockets zeroconf"
-            )
+            decky.logger.error("websockets package not found")
             return False
 
         try:
-            # Use port 0 for dynamic port assignment by OS
             self.server = await websockets.serve(
-                self.handle_connection,
-                "0.0.0.0",
-                0,
-                max_size=50 * 1024 * 1024,  # 50MB max message (matches Go agents)
-                reuse_address=True,
+                self.handle_connection, "0.0.0.0", 0,
+                max_size=50 * 1024 * 1024, reuse_address=True,
             )
-            # Get the actual port assigned by the OS
             self.actual_port = self.server.sockets[0].getsockname()[1]
             decky.logger.info(f"WebSocket server started on port {self.actual_port}")
             return True
@@ -89,7 +68,6 @@ class WebSocketServer:
             return False
 
     async def close_connection(self):
-        """Close the active WebSocket connection."""
         if self._active_websocket:
             try:
                 await self._active_websocket.close()
@@ -97,7 +75,6 @@ class WebSocketServer:
                 pass
 
     async def stop(self):
-        """Stop the WebSocket server."""
         await self.close_connection()
         if self.server:
             self.server.close()
@@ -106,7 +83,6 @@ class WebSocketServer:
             decky.logger.info("WebSocket server stopped")
 
     async def _write_pump(self, websocket, send_queue: asyncio.Queue):
-        """Dedicated task for writing messages to WebSocket (like Go's writePump)."""
         try:
             while True:
                 msg_data = await send_queue.get()
@@ -124,13 +100,11 @@ class WebSocketServer:
             decky.logger.error(f"Write pump error: {e}")
 
     async def handle_connection(self, websocket):
-        """Handle a new WebSocket connection."""
         decky.logger.info(f"New connection from {websocket.remote_address}")
         authorized = False
         hub_id = None
         self._active_websocket = websocket
 
-        # Local refs so cleanup works even if a new connection overwrites instance vars
         send_queue = asyncio.Queue()
         write_task = asyncio.create_task(self._write_pump(websocket, send_queue))
         self._send_queue = send_queue
@@ -140,7 +114,7 @@ class WebSocketServer:
             async for message in websocket:
                 try:
                     if isinstance(message, bytes):
-                        await self.handle_binary(websocket, message)
+                        await upload.handle_binary(self, websocket, message)
                         continue
 
                     msg = json.loads(message)
@@ -151,43 +125,23 @@ class WebSocketServer:
                     decky.logger.info(f"WS RECV [{msg_type}] id={msg_id}")
 
                     if msg_type == "hub_connected":
-                        hub_id, authorized = await self.handle_hub_connected(
-                            websocket, msg_id, payload
+                        hub_id, authorized = await auth.handle_hub_connected(
+                            self, websocket, msg_id, payload
                         )
                     elif msg_type == "pair_confirm":
-                        authorized = await self.handle_pair_confirm(
-                            websocket, msg_id, payload, hub_id
+                        authorized = await auth.handle_pair_confirm(
+                            self, websocket, msg_id, payload, hub_id
                         )
                     elif not authorized:
                         await self.send_error(websocket, msg_id, 401, "Not authorized")
                     elif msg_type == "ping":
                         await self.send(websocket, msg_id, "pong", None)
-                    elif msg_type == "get_info":
-                        await self.handle_get_info(websocket, msg_id)
-                    elif msg_type == "get_config":
-                        await self.handle_get_config(websocket, msg_id)
-                    elif msg_type == "init_upload":
-                        await self.handle_init_upload(websocket, msg_id, payload)
-                    elif msg_type == "upload_chunk":
-                        await self.handle_upload_chunk(websocket, msg_id, payload)
-                    elif msg_type == "complete_upload":
-                        await self.handle_complete_upload(websocket, msg_id, payload)
-                    elif msg_type == "cancel_upload":
-                        await self.handle_cancel_upload(websocket, msg_id, payload)
-                    elif msg_type == "get_steam_users":
-                        await self.handle_get_steam_users(websocket, msg_id)
-                    elif msg_type == "list_shortcuts":
-                        await self.handle_list_shortcuts(websocket, msg_id, payload)
-                    elif msg_type == "delete_game":
-                        await self.handle_delete_game(websocket, msg_id, payload)
-                    elif msg_type == "restart_steam":
-                        await self.handle_restart_steam(websocket, msg_id)
-                    elif msg_type == "set_console_log_filter":
-                        await self.handle_set_console_log_filter(websocket, msg_id, payload)
-                    elif msg_type == "set_console_log_enabled":
-                        await self.handle_set_console_log_enabled(websocket, msg_id, payload)
                     else:
-                        decky.logger.warning(f"Unknown message type: {msg_type}")
+                        handler = HANDLERS.get(msg_type)
+                        if handler:
+                            await handler(self, websocket, msg_id, payload)
+                        else:
+                            decky.logger.warning(f"Unknown message type: {msg_type}")
 
                 except json.JSONDecodeError:
                     decky.logger.error("Failed to parse JSON message")
@@ -199,7 +153,6 @@ class WebSocketServer:
         finally:
             self._active_websocket = None
 
-            # Stop write pump using LOCAL refs (instance vars may belong to a newer connection)
             await send_queue.put(None)
             write_task.cancel()
             try:
@@ -207,626 +160,23 @@ class WebSocketServer:
             except asyncio.CancelledError:
                 pass
 
-            # Cleanup orphaned uploads from this connection
-            await self._cleanup_orphaned_uploads()
+            await upload.cleanup_orphaned_uploads(self)
 
             self._pending_artwork.clear()
 
             if self.connected_hub and self.connected_hub.get("id") == hub_id:
-                self.stop_telemetry()
-                self.stop_console_log()
-                self.stop_game_log()
+                telemetry.stop_telemetry(self)
+                console_log.stop_console_log(self)
+                console_log.stop_game_log(self)
                 self.connected_hub = None
                 try:
-                    # Tell JS frontend to remove console hook
                     await self.plugin.notify_frontend("console_log_toggle", {"enabled": False})
                     await self.plugin.notify_frontend("hub_disconnected", {})
                 except Exception as e:
                     decky.logger.error(f"Failed to notify hub_disconnected: {e}")
             decky.logger.info(f"Connection closed: {websocket.remote_address}")
 
-    async def handle_hub_connected(self, websocket, msg_id: str, payload: dict):
-        """Handle hub_connected handshake."""
-        hub_id = payload.get("hubId", "")
-        hub_name = payload.get("name", "Unknown Hub")
-        hub_version = payload.get("version", "")
-        hub_platform = payload.get("platform", "")
-        token = payload.get("token", "")
-
-        decky.logger.info(f"Hub connected: {hub_name} v{hub_version} ({hub_platform})")
-
-        # Check if token is valid
-        if token and hub_id and self.plugin.pairing.validate_token(hub_id, token):
-            self.connected_hub = {"id": hub_id, "name": hub_name, "version": hub_version, "platform": hub_platform}
-            tel_enabled = self.plugin.settings.getSetting("telemetry_enabled", False)
-            tel_interval = self.plugin.settings.getSetting("telemetry_interval", 2)
-            cl_enabled = self.plugin.settings.getSetting("console_log_enabled", False)
-            await self.send(websocket, msg_id, "agent_status", {
-                "name": self.plugin.agent_name,
-                "version": self.plugin.version,
-                "platform": "linux",
-                "acceptConnections": self.plugin.accept_connections,
-                "telemetryEnabled": tel_enabled,
-                "telemetryInterval": tel_interval,
-                "consoleLogEnabled": cl_enabled,
-            })
-            await self.plugin.notify_frontend("hub_connected", {
-                "name": hub_name,
-                "version": hub_version,
-            })
-            # Start telemetry if enabled
-            if tel_enabled:
-                self.start_telemetry(tel_interval)
-            # Start console log if enabled
-            if cl_enabled:
-                self.start_console_log()
-            return hub_id, True
-
-        # Need pairing
-        if not hub_id:
-            await self.send_error(websocket, msg_id, 401, "hub_id required")
-            return None, False
-
-        code = self.plugin.pairing.generate_code(hub_id, hub_name, hub_platform)
-        if code is None:
-            remaining = self.plugin.pairing.lockout_remaining()
-            await self.send_error(
-                websocket, msg_id, 429,
-                f"Pairing locked out. Try again in {remaining}s",
-            )
-            return hub_id, False
-
-        await self.send(websocket, msg_id, "pairing_required", {
-            "code": code,
-            "expiresIn": PAIRING_CODE_EXPIRY,
-        })
-        await self.plugin.notify_frontend("pairing_code", {"code": code})
-        return hub_id, False
-
-    async def handle_pair_confirm(self, websocket, msg_id: str, payload: dict, hub_id: str):
-        """Handle pairing confirmation."""
-        code = payload.get("code", "")
-        token = self.plugin.pairing.validate_code(hub_id, code)
-
-        if token:
-            self.connected_hub = {"id": hub_id, "name": self.plugin.pairing.pending_hub_name}
-            await self.send(websocket, msg_id, "pair_success", {"token": token})
-            await self.plugin.notify_frontend("pairing_success", {})
-            return True
-
-        # Check if this failure triggered a lockout
-        if self.plugin.pairing.is_locked_out():
-            remaining = self.plugin.pairing.lockout_remaining()
-            await self.send(websocket, msg_id, "pair_failed", {
-                "reason": f"Too many failed attempts. Locked for {remaining}s",
-            })
-            await self.plugin.notify_frontend("pairing_locked", {
-                "remainingSeconds": remaining,
-            })
-        else:
-            await self.send(websocket, msg_id, "pair_failed", {"reason": "Invalid code"})
-        return False
-
-    async def handle_get_info(self, websocket, msg_id: str):
-        """Return agent info."""
-        await self.send(websocket, msg_id, "info_response", {
-            "agent": {
-                "id": self.plugin.agent_id,
-                "name": self.plugin.agent_name,
-                "platform": "linux",
-                "version": self.plugin.version,
-                "acceptConnections": self.plugin.accept_connections,
-            }
-        })
-
-    async def handle_get_config(self, websocket, msg_id: str):
-        """Return agent config."""
-        await self.send(websocket, msg_id, "config_response", {
-            "installPath": self.plugin.install_path,
-        })
-
-    async def handle_get_steam_users(self, websocket, msg_id: str):
-        """Return Steam users from userdata directory."""
-        users = get_steam_users()
-        proto_users = [{"id": u["id"]} for u in users]
-        await self.send(websocket, msg_id, "steam_users_response", {"users": proto_users})
-
-    async def handle_list_shortcuts(self, websocket, msg_id: str, payload: dict):
-        """Return shortcuts from tracked data (SteamClient writes VDF lazily)."""
-        tracked = self.plugin.settings.getSetting("tracked_shortcuts", [])
-        shortcuts = []
-        for sc in tracked:
-            shortcuts.append({
-                "appId": sc.get("appId", 0),
-                "name": sc.get("name", ""),
-                "exe": sc.get("exe", ""),
-                "startDir": sc.get("startDir", ""),
-                "launchOptions": "",
-                "lastPlayed": 0,
-            })
-        await self.send(websocket, msg_id, "shortcuts_response", {"shortcuts": shortcuts})
-
-    async def handle_delete_game(self, websocket, msg_id: str, payload: dict):
-        """Delete a game completely (like Go agent's handleDeleteGame)."""
-        import shutil
-
-        app_id = payload.get("appId", 0)
-        tracked = self.plugin.settings.getSetting("tracked_shortcuts", [])
-
-        # Find game by appId
-        game = None
-        for sc in tracked:
-            if sc.get("appId") == app_id:
-                game = sc
-                break
-
-        if not game:
-            await self.send_error(websocket, msg_id, 404, "game not found")
-            return
-
-        game_name = game.get("name", game.get("gameName", ""))
-
-        # Notify frontend: delete start
-        await self.plugin.notify_frontend("operation_event", {
-            "type": "delete",
-            "status": "start",
-            "gameName": game_name,
-            "progress": 0,
-            "message": "Eliminando...",
-        })
-
-        # Delete game folder
-        start_dir = game.get("startDir", "").strip('"')
-        if start_dir and os.path.isdir(start_dir):
-            try:
-                shutil.rmtree(start_dir)
-                decky.logger.info(f"Deleted game folder: {start_dir}")
-            except Exception as e:
-                decky.logger.error(f"Failed to delete game folder: {e}")
-
-        # Notify frontend to remove Steam shortcut via SteamClient.Apps.RemoveShortcut
-        await self.plugin.notify_frontend("remove_shortcut", {"appId": app_id})
-
-        # Remove from tracked list
-        tracked = [sc for sc in tracked if sc.get("appId") != app_id]
-        self.plugin.settings.setSetting("tracked_shortcuts", tracked)
-
-        # Notify complete
-        await self.plugin.notify_frontend("operation_event", {
-            "type": "delete",
-            "status": "complete",
-            "gameName": game_name,
-            "progress": 100,
-            "message": "Eliminado",
-        })
-
-        await self.send(websocket, msg_id, "operation_result", {
-            "status": "deleted",
-            "gameName": game_name,
-            "steamRestarted": False,
-        })
-
-    async def handle_restart_steam(self, websocket, msg_id: str):
-        """Gracefully shutdown Steam. In Gaming Mode the session manager restarts it automatically."""
-        import subprocess
-
-        try:
-            subprocess.Popen(
-                ["steam", "-shutdown"],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-            )
-            await self.send(websocket, msg_id, "steam_response", {"success": True, "message": "restarting"})
-        except Exception as e:
-            await self.send(websocket, msg_id, "steam_response", {"success": False, "message": str(e)})
-
-    async def handle_init_upload(self, websocket, msg_id: str, payload: dict):
-        """Initialize an upload session."""
-        config = payload.get("config", {})
-        game_name = config.get("gameName", "Unknown")
-        total_size = payload.get("totalSize", 0)
-        files = payload.get("files", [])
-
-        try:
-            _validate_safe_path(game_name)
-        except ValueError as e:
-            await self.send_error(websocket, msg_id, 400, f"invalid game name: {e}")
-            return
-
-        upload_id = f"upload-{int(time.time())}-{random.randint(1000, 9999)}"
-        session = UploadSession(upload_id, game_name, total_size, files)
-        expanded = expand_path(self.plugin.install_path)
-        session.install_path = os.path.join(expanded, game_name)
-        session.executable = config.get("executable", "")
-        self.uploads[upload_id] = session
-
-        os.makedirs(session.install_path, exist_ok=True)
-
-        decky.logger.info(f"Upload started: {game_name} ({total_size} bytes) -> {session.install_path}")
-        await self.plugin.notify_frontend("operation_event", {
-            "type": "install",
-            "status": "start",
-            "gameName": game_name,
-            "progress": 0,
-        })
-
-        await self.send(websocket, msg_id, "upload_init_response", {
-            "uploadId": upload_id,
-            "chunkSize": CHUNK_SIZE,
-        })
-
-    async def _write_chunk(self, websocket, msg_id: str, upload_id: str,
-                           file_path: str, offset: int, chunk_data: bytes):
-        """Write a chunk to disk and emit progress. Shared by JSON and binary paths."""
-        session = self.uploads.get(upload_id)
-        if not session:
-            await self.send_error(websocket, msg_id, 404, "Upload not found")
-            return
-
-        try:
-            _validate_safe_path(file_path)
-        except ValueError as e:
-            await self.send_error(websocket, msg_id, 400, f"invalid file path: {e}")
-            return
-
-        full_path = os.path.join(session.install_path, file_path)
-        os.makedirs(os.path.dirname(full_path), exist_ok=True)
-
-        with open(full_path, "ab" if offset > 0 else "wb") as f:
-            f.seek(offset)
-            f.write(chunk_data)
-
-        session.transferred += len(chunk_data)
-        session.current_file = file_path
-
-        progress = session.progress()
-        await self.plugin.notify_frontend("upload_progress", {
-            "uploadId": upload_id,
-            "transferredBytes": session.transferred,
-            "totalBytes": session.total_size,
-            "currentFile": file_path,
-            "percentage": progress,
-        })
-
-        await self.send(websocket, msg_id, "upload_chunk_response", {
-            "uploadId": upload_id,
-            "bytesWritten": len(chunk_data),
-            "totalWritten": session.transferred,
-        })
-
-    async def handle_upload_chunk(self, websocket, msg_id: str, payload: dict):
-        """Handle a chunk upload (JSON path)."""
-        upload_id = payload.get("uploadId", "")
-        file_path = payload.get("filePath", "")
-        offset = payload.get("offset", 0)
-        data = payload.get("data", b"")
-
-        if isinstance(data, str):
-            import base64
-            data = base64.b64decode(data)
-
-        await self._write_chunk(websocket, msg_id, upload_id, file_path, offset, data)
-
-    async def handle_binary(self, websocket, data: bytes):
-        """Handle binary messages. Format: [4 bytes: header len][header JSON][binary data]
-
-        Routes based on header 'type' field:
-        - "artwork_image" → apply artwork bytes to Steam grid directory
-        - default (no type / has uploadId) → upload chunk flow
-        """
-        if len(data) < 4:
-            decky.logger.error("Binary message too short")
-            return
-
-        header_len = (data[0] << 24) | (data[1] << 16) | (data[2] << 8) | data[3]
-        if len(data) < 4 + header_len:
-            decky.logger.error("Binary message header incomplete")
-            return
-
-        try:
-            header = json.loads(data[4:4 + header_len].decode('utf-8'))
-        except Exception as e:
-            decky.logger.error(f"Invalid binary header: {e}")
-            return
-
-        binary_data = data[4 + header_len:]
-        msg_type = header.get("type", "")
-
-        if msg_type == "artwork_image":
-            await self.handle_binary_artwork(websocket, header, binary_data)
-            return
-
-        # Default: upload chunk flow
-        msg_id = header.get("id", "")
-        upload_id = header.get("uploadId", "")
-        file_path = header.get("filePath", "")
-        offset = header.get("offset", 0)
-
-        decky.logger.info(f"Binary chunk: {upload_id}/{file_path} offset={offset} size={len(binary_data)}")
-        await self._write_chunk(websocket, msg_id, upload_id, file_path, offset, binary_data)
-
-    async def handle_binary_artwork(self, websocket, header: dict, data: bytes):
-        """Handle artwork_image binary message.
-
-        When appId=0 (pre-CompleteUpload phase): store artwork as pending
-        base64 so handle_complete_upload can include it in create_shortcut.
-        When appId>0: write directly to Steam grid directory.
-        """
-        import base64
-
-        msg_id = header.get("id", "")
-        app_id = header.get("appId", 0)
-        artwork_type = header.get("artworkType", "")
-        content_type = header.get("contentType", "")
-
-        decky.logger.info(
-            f"Artwork image: appId={app_id} type={artwork_type} "
-            f"contentType={content_type} size={len(data)}"
-        )
-
-        if app_id == 0:
-            # Pre-CompleteUpload: store as pending for the frontend flow
-            fmt = "png"
-            if "jpeg" in content_type or "jpg" in content_type:
-                fmt = "jpg"
-
-            b64 = base64.b64encode(data).decode("ascii")
-            self._pending_artwork[artwork_type] = {"data": b64, "format": fmt}
-            decky.logger.info(f"Stored pending artwork: {artwork_type} ({len(data)} bytes)")
-            await self.send(websocket, msg_id, "artwork_image_response", {
-                "success": True,
-                "artworkType": artwork_type,
-            })
-            return
-
-        try:
-            # Write to filesystem (fallback for Steam restart)
-            apply_from_data(app_id, artwork_type, data, content_type)
-
-            # Notify frontend to apply via SteamClient API (instant, no restart)
-            fmt = "png"
-            if "jpeg" in content_type or "jpg" in content_type:
-                fmt = "jpg"
-
-            b64 = base64.b64encode(data).decode("ascii")
-            await self.plugin.notify_frontend("update_artwork", {
-                "appId": app_id,
-                "artworkType": artwork_type,
-                "data": b64,
-                "format": fmt,
-            })
-
-            await self.send(websocket, msg_id, "artwork_image_response", {
-                "success": True,
-                "artworkType": artwork_type,
-            })
-        except Exception as e:
-            decky.logger.error(f"Failed to apply artwork: {e}")
-            await self.send(websocket, msg_id, "artwork_image_response", {
-                "success": False,
-                "artworkType": artwork_type,
-                "error": str(e),
-            })
-
-    async def handle_cancel_upload(self, websocket, msg_id: str, payload: dict):
-        """Cancel an active upload."""
-        upload_id = payload.get("uploadId", "")
-        session = self.uploads.get(upload_id)
-
-        if session:
-            session.status = "cancelled"
-            if session.install_path and os.path.exists(session.install_path):
-                import shutil
-
-                try:
-                    shutil.rmtree(session.install_path)
-                except Exception as e:
-                    decky.logger.error(f"Failed to cleanup cancelled upload: {e}")
-            del self.uploads[upload_id]
-            decky.logger.info(f"Upload cancelled: {session.game_name}")
-
-        await self.send(websocket, msg_id, "operation_result", {"success": True})
-
-    async def handle_complete_upload(self, websocket, msg_id: str, payload: dict):
-        """Complete an upload and create shortcut."""
-        upload_id = payload.get("uploadId", "")
-        create_shortcut = payload.get("createShortcut", False)
-        shortcut_config = payload.get("shortcut", {})
-
-        session = self.uploads.get(upload_id)
-        if not session:
-            await self.send_error(websocket, msg_id, 404, "Upload not found")
-            return
-
-        session.status = "complete"
-        decky.logger.info(f"Upload complete: {session.game_name}")
-
-        result = {
-            "success": True,
-            "path": session.install_path,
-        }
-
-        if create_shortcut and shortcut_config:
-            # Agent calculates all paths — Hub only provides the executable filename
-            exe_name = os.path.basename(session.executable.replace("\\", "/"))
-            exe_path = os.path.join(session.install_path, exe_name)
-
-            if os.path.exists(exe_path):
-                os.chmod(exe_path, 0o755)
-
-            quoted_start_dir = f'"{session.install_path}"'
-            shortcut_name = shortcut_config.get("name", session.game_name)
-
-            artwork_b64 = {}
-            raw_artwork = shortcut_config.get("artwork", {})
-            if raw_artwork:
-                artwork_b64 = await download_artwork(raw_artwork)
-
-            # Merge pending local artwork (received via binary WS before CompleteUpload)
-            if self._pending_artwork:
-                decky.logger.info(
-                    f"Merging {len(self._pending_artwork)} pending local artwork(s)"
-                )
-                for art_type, art_data in self._pending_artwork.items():
-                    artwork_b64[art_type] = art_data
-                self._pending_artwork.clear()
-
-            # Pass icon URL directly (backend will download it after shortcut creation)
-            icon_url = raw_artwork.get("icon", "")
-
-            await self.plugin.notify_frontend("create_shortcut", {
-                "name": shortcut_name,
-                "exe": exe_path,
-                "startDir": quoted_start_dir,
-                "artwork": artwork_b64,
-                "iconUrl": icon_url,
-            })
-
-            tracked = self.plugin.settings.getSetting("tracked_shortcuts", [])
-            tracked.append({
-                "name": shortcut_name,
-                "exe": exe_path,
-                "startDir": session.install_path,
-                "appId": 0,
-                "gameName": session.game_name,
-                "installedAt": time.time(),
-            })
-            self.plugin.settings.setSetting("tracked_shortcuts", tracked)
-
-        await self.plugin.notify_frontend("operation_event", {
-            "type": "install",
-            "status": "complete",
-            "gameName": session.game_name,
-            "progress": 100,
-        })
-
-        del self.uploads[upload_id]
-
-        await self.send(websocket, msg_id, "operation_result", result)
-
-    # ── Telemetry ─────────────────────────────────────────────────────────
-
-    def start_telemetry(self, interval: float) -> None:
-        """Start sending telemetry data to the connected Hub."""
-        if not self.connected_hub or not self.plugin.telemetry:
-            return
-        self.plugin.telemetry.start(interval, self._send_telemetry_data)
-        decky.logger.info(f"Telemetry streaming started (interval={interval}s)")
-
-    def stop_telemetry(self) -> None:
-        """Stop sending telemetry data."""
-        if self.plugin.telemetry:
-            self.plugin.telemetry.stop()
-
-    async def _send_telemetry_data(self, data: dict) -> None:
-        """Callback invoked by TelemetryCollector each tick."""
-        if not self.connected_hub or not self._send_queue:
-            return
-        msg = {
-            "id": str(uuid.uuid4()),
-            "type": "telemetry_data",
-            "payload": data,
-        }
-        await self._send_queue.put(json.dumps(msg))
-
-    async def send_telemetry_status(self) -> None:
-        """Notify the Hub about telemetry enabled/interval changes."""
-        if not self.connected_hub or not self._send_queue:
-            return
-        msg = {
-            "id": str(uuid.uuid4()),
-            "type": "telemetry_status",
-            "payload": {
-                "enabled": self.plugin.settings.getSetting("telemetry_enabled", False),
-                "interval": self.plugin.settings.getSetting("telemetry_interval", 2),
-            },
-        }
-        await self._send_queue.put(json.dumps(msg))
-
-    # ── Console Log ────────────────────────────────────────────────────────
-
-    async def handle_set_console_log_filter(self, websocket, msg_id: str, payload: dict) -> None:
-        """Handle set_console_log_filter: update log level bitmask."""
-        mask = payload.get("levelMask", 15)
-        if self.plugin.console_log:
-            self.plugin.console_log.set_level_mask(mask)
-        decky.logger.info(f"Console log filter updated: mask=0x{mask:02x}")
-        await self.send(websocket, msg_id, "set_console_log_filter", {"levelMask": mask})
-
-    async def handle_set_console_log_enabled(self, websocket, msg_id: str, payload: dict) -> None:
-        """Handle set_console_log_enabled: toggle console log streaming remotely."""
-        enabled = payload.get("enabled", False)
-        await self.plugin.set_console_log_enabled(enabled)
-        decky.logger.info(f"Console log enabled (remote): {enabled}")
-        await self.send(websocket, msg_id, "set_console_log_enabled", {"enabled": enabled})
-
-    def start_console_log(self) -> None:
-        """Start sending console log data to the connected Hub."""
-        if not self.connected_hub or not self.plugin.console_log:
-            return
-        self.plugin.console_log.start(self._send_console_log_data)
-        decky.logger.info("Console log streaming started")
-
-    def stop_console_log(self) -> None:
-        """Stop sending console log data."""
-        if self.plugin.console_log:
-            self.plugin.console_log.stop()
-
-    async def _send_console_log_data(self, batch: dict) -> None:
-        """Callback invoked by ConsoleLogCollector each flush."""
-        if not self.connected_hub or not self._send_queue:
-            return
-        msg = {
-            "id": str(uuid.uuid4()),
-            "type": "console_log_data",
-            "payload": batch,
-        }
-        await self._send_queue.put(json.dumps(msg))
-
-    async def send_console_log_status(self) -> None:
-        """Notify the Hub about console log enabled/disabled changes."""
-        if not self.connected_hub or not self._send_queue:
-            return
-        level_mask = 15  # default
-        if self.plugin.console_log:
-            level_mask = self.plugin.console_log.level_mask
-        msg = {
-            "id": str(uuid.uuid4()),
-            "type": "console_log_status",
-            "payload": {
-                "enabled": self.plugin.settings.getSetting("console_log_enabled", False),
-                "levelMask": level_mask,
-            },
-        }
-        await self._send_queue.put(json.dumps(msg))
-
-    # ── Game Log Wrapper ────────────────────────────────────────────────────
-
-    def start_game_log(self, app_id: int) -> None:
-        """Start tailing game log for the given appId."""
-        if not self.connected_hub or not self.plugin.game_log_tailer:
-            return
-        self.plugin.game_log_tailer.start(app_id, self._send_game_log_data)
-        decky.logger.info(f"Game log tailing started for appId={app_id}")
-
-    def stop_game_log(self) -> None:
-        """Stop tailing game log."""
-        if self.plugin.game_log_tailer:
-            self.plugin.game_log_tailer.stop()
-
-    async def _send_game_log_data(self, batch: dict) -> None:
-        """Callback invoked by GameLogTailer — reuses console_log_data channel."""
-        if not self.connected_hub or not self._send_queue:
-            return
-        msg = {
-            "id": str(uuid.uuid4()),
-            "type": "console_log_data",
-            "payload": batch,
-        }
-        await self._send_queue.put(json.dumps(msg))
-
     async def send(self, websocket, msg_id: str, msg_type: str, payload):
-        """Send a JSON message via the write queue."""
         msg = {"id": msg_id, "type": msg_type}
         if payload is not None:
             msg["payload"] = payload
@@ -838,7 +188,6 @@ class WebSocketServer:
             decky.logger.error("Send queue not initialized!")
 
     async def send_error(self, websocket, msg_id: str, code: int, message: str):
-        """Send an error message via the write queue."""
         msg = {
             "id": msg_id,
             "type": "error",
@@ -848,28 +197,3 @@ class WebSocketServer:
             await self._send_queue.put(json.dumps(msg))
         else:
             decky.logger.error("Send queue not initialized!")
-
-    async def _cleanup_orphaned_uploads(self):
-        """Cleanup incomplete uploads when client disconnects unexpectedly."""
-        import shutil
-
-        orphaned = [
-            uid for uid, session in self.uploads.items()
-            if session.status == "active"
-        ]
-
-        for upload_id in orphaned:
-            session = self.uploads.get(upload_id)
-            if session:
-                decky.logger.warning(f"Cleaning orphaned upload: {session.game_name}")
-                # Remove partially uploaded files
-                if session.install_path and os.path.exists(session.install_path):
-                    try:
-                        shutil.rmtree(session.install_path)
-                        decky.logger.info(f"Removed orphaned folder: {session.install_path}")
-                    except Exception as e:
-                        decky.logger.error(f"Failed to cleanup orphaned upload: {e}")
-                del self.uploads[upload_id]
-
-        if orphaned:
-            decky.logger.info(f"Cleaned up {len(orphaned)} orphaned upload(s)")

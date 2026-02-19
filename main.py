@@ -34,6 +34,7 @@ from pairing import PairingManager
 from upload import UploadSession
 from artwork import download_artwork, set_shortcut_icon, set_shortcut_icon_from_url
 from ws_server import WebSocketServer
+from handlers import telemetry as tel_handler, console_log as cl_handler
 
 try:
     from telemetry import TelemetryCollector
@@ -254,10 +255,10 @@ class Plugin:
         self.settings.setSetting("telemetry_enabled", enabled)
         if enabled and self.ws_server.connected_hub:
             interval = self.settings.getSetting("telemetry_interval", 2)
-            self.ws_server.start_telemetry(interval)
+            tel_handler.start_telemetry(self.ws_server, interval)
         else:
-            self.ws_server.stop_telemetry()
-        await self.ws_server.send_telemetry_status()
+            tel_handler.stop_telemetry(self.ws_server)
+        await tel_handler.send_telemetry_status(self.ws_server)
 
     async def set_telemetry_interval(self, seconds=2):
         """Set telemetry send interval in seconds."""
@@ -266,7 +267,7 @@ class Plugin:
         self.settings.setSetting("telemetry_interval", seconds)
         if self.telemetry and self.telemetry.running:
             self.telemetry.update_interval(seconds)
-        await self.ws_server.send_telemetry_status()
+        await tel_handler.send_telemetry_status(self.ws_server)
 
     async def get_telemetry_settings(self):
         """Get current telemetry settings."""
@@ -280,12 +281,12 @@ class Plugin:
         decky.logger.info(f"set_console_log_enabled: {enabled}")
         self.settings.setSetting("console_log_enabled", enabled)
         if enabled and self.ws_server.connected_hub:
-            self.ws_server.start_console_log()
+            cl_handler.start_console_log(self.ws_server)
         else:
-            self.ws_server.stop_console_log()
+            cl_handler.stop_console_log(self.ws_server)
         # Tell JS frontend to install/remove the console hook
         await self.notify_frontend("console_log_toggle", {"enabled": enabled})
-        await self.ws_server.send_console_log_status()
+        await cl_handler.send_console_log_status(self.ws_server)
 
     async def add_console_log(self, level: str, text: str, url: str = "",
                               line: int = 0, segments_json: str = ""):
@@ -315,9 +316,9 @@ class Plugin:
             return
 
         if running:
-            self.ws_server.start_game_log(app_id)
+            cl_handler.start_game_log(self.ws_server, app_id)
         else:
-            self.ws_server.stop_game_log()
+            cl_handler.stop_game_log(self.ws_server)
             self._active_game_logs.discard(app_id)
 
     async def log_info(self, message: str):
