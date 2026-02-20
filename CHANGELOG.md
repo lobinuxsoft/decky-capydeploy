@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 For the full CapyDeploy project changelog, see the [main project](https://github.com/lobinuxsoft/capydeploy/blob/master/CHANGELOG.md).
 
+## [0.9.0](https://github.com/lobinuxsoft/decky-capydeploy/compare/v0.8.0...v0.9.0) (2026-02-20)
+
+
+### Features
+
+* add TCP data channel for direct file transfers ([b4314a7](https://github.com/lobinuxsoft/decky-capydeploy/commit/b4314a7b376c87a44b7a3b4005ecc74f76090d1e))
+* add TCP data channel for direct file transfers ([d91168e](https://github.com/lobinuxsoft/decky-capydeploy/commit/d91168e34841ae4989446adeed9fe9ae8cf8a997))
+
 ## [0.8.0](https://github.com/lobinuxsoft/decky-capydeploy/compare/v0.7.2...v0.8.0) (2026-02-19)
 
 
