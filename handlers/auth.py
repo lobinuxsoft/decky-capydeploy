@@ -82,6 +82,7 @@ async def handle_hub_connected(
             "telemetryInterval": tel_interval,
             "consoleLogEnabled": cl_enabled,
             "protocolVersion": PROTOCOL_VERSION,
+            "capabilities": ["tcp_data_channel"],
         })
         await server.plugin.notify_frontend("hub_connected", {
             "name": hub_name,

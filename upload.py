@@ -2,7 +2,12 @@
 Upload session state tracking.
 """
 
-from typing import Optional
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Optional
+
+if TYPE_CHECKING:
+    from tcp_server import TcpDataServer
 
 
 class UploadSession:
@@ -18,6 +23,7 @@ class UploadSession:
         self.status = "active"
         self.install_path: Optional[str] = None
         self.executable: Optional[str] = None
+        self.tcp_server: Optional[TcpDataServer] = None
 
     def progress(self) -> float:
         if self.total_size == 0:

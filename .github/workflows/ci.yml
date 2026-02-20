@@ -53,7 +53,7 @@ jobs:
 
       - name: Syntax check
         run: |
-          for pyfile in main.py steam_utils.py mdns_service.py pairing.py upload.py artwork.py ws_server.py telemetry.py console_log.py game_log.py; do
+          for pyfile in main.py steam_utils.py mdns_service.py pairing.py upload.py artwork.py ws_server.py telemetry.py console_log.py game_log.py tcp_server.py; do
             python3 -m py_compile "$pyfile"
           done
           echo "All Python files OK"

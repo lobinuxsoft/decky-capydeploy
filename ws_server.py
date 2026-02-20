@@ -160,6 +160,15 @@ class WebSocketServer:
             except asyncio.CancelledError:
                 pass
 
+            # Stop any active TCP data channels.
+            for session in self.uploads.values():
+                if hasattr(session, 'tcp_server') and session.tcp_server:
+                    try:
+                        await session.tcp_server.stop()
+                    except Exception as e:
+                        decky.logger.error(f"Failed to stop TCP server: {e}")
+                    session.tcp_server = None
+
             await upload.cleanup_orphaned_uploads(self)
 
             self._pending_artwork.clear()
