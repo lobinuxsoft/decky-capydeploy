@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import json
 import os
@@ -13,6 +14,7 @@ import decky  # type: ignore
 
 from artwork import download_artwork, apply_from_data
 from steam_utils import expand_path
+from tcp_server import TcpDataServer
 from upload import UploadSession
 
 if TYPE_CHECKING:
@@ -70,10 +72,69 @@ async def handle_init_upload(
         "progress": 0,
     })
 
-    await server.send(websocket, msg_id, "upload_init_response", {
+    # Start TCP data channel *before* sending the response so the Hub
+    # receives tcpPort/tcpToken in the InitUploadResponse itself.
+    tcp = TcpDataServer()
+    session.tcp_server = tcp
+    tcp_port = None
+    tcp_token = None
+    try:
+        tcp_port, tcp_token = await tcp.start()
+    except Exception as e:
+        decky.logger.warning(f"Failed to start TCP data channel: {e}")
+        session.tcp_server = None
+
+    resp_payload = {
         "uploadId": upload_id,
         "chunkSize": CHUNK_SIZE,
-    })
+    }
+    if tcp_port is not None and tcp_token is not None:
+        resp_payload["tcpPort"] = tcp_port
+        resp_payload["tcpToken"] = tcp_token
+
+    await server.send(websocket, msg_id, "upload_init_response", resp_payload)
+
+    if tcp_port is not None and tcp_token is not None:
+        # Spawn background task to receive files via TCP.
+        async def _tcp_receive():
+            try:
+                last_pct = 0.0
+                last_time = time.monotonic()
+
+                def _progress_cb(total_bytes: int, current_file: str):
+                    nonlocal last_pct, last_time
+                    session.transferred = total_bytes
+                    session.current_file = current_file
+                    pct = session.progress()
+                    now = time.monotonic()
+                    # Throttle progress: >= 2% change or >= 500ms.
+                    if pct >= 100.0 or (pct - last_pct) >= 2.0 or (now - last_time) >= 0.5:
+                        last_pct = pct
+                        last_time = now
+                        asyncio.get_event_loop().call_soon_threadsafe(
+                            lambda: asyncio.ensure_future(
+                                server.plugin.notify_frontend("upload_progress", {
+                                    "uploadId": upload_id,
+                                    "transferredBytes": total_bytes,
+                                    "totalBytes": session.total_size,
+                                    "currentFile": current_file,
+                                    "percentage": pct,
+                                })
+                            )
+                        )
+
+                total = await tcp.accept_and_receive(
+                    session.install_path, _progress_cb
+                )
+                decky.logger.info(
+                    f"TCP data channel complete for {upload_id}: {total} bytes"
+                )
+            except Exception as e:
+                decky.logger.warning(
+                    f"TCP data channel failed for {upload_id}: {e}"
+                )
+
+        asyncio.create_task(_tcp_receive())
 
 
 async def _write_chunk(
@@ -249,6 +310,11 @@ async def handle_complete_upload(
         await server.send_error(websocket, msg_id, 404, "Upload not found")
         return
 
+    # Stop TCP data channel if active.
+    if session.tcp_server:
+        await session.tcp_server.stop()
+        session.tcp_server = None
+
     session.status = "complete"
     decky.logger.info(f"Upload complete: {session.game_name}")
 
@@ -326,6 +392,11 @@ async def handle_cancel_upload(
     session = server.uploads.get(upload_id)
 
     if session:
+        # Stop TCP data channel if active.
+        if session.tcp_server:
+            await session.tcp_server.stop()
+            session.tcp_server = None
+
         session.status = "cancelled"
         if session.install_path and os.path.exists(session.install_path):
             try:
