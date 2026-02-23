@@ -10,13 +10,16 @@ Wire format matches crates/data-channel (Rust implementation):
     [path_len bytes: relative_path UTF-8]
     [8 bytes BE: file_size]
     [file_size bytes: raw file data]
+    [16 bytes: MD5 digest of file data]
 
   END MARKER: [2 bytes: 0x0000]
+  TRANSFER ACK (Agent -> Hub): [1 byte: 0x02]
 """
 
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import os
 import secrets
 import struct
@@ -32,6 +35,8 @@ TOKEN_LEN = 32
 
 AUTH_OK = 0x01
 AUTH_REJECTED = 0x00
+TRANSFER_ACK = 0x02
+MD5_DIGEST_LEN = 16
 
 
 def _validate_path(path: str) -> None:
@@ -55,6 +60,7 @@ class TcpDataServer:
         self._port: int = 0
         self._token: str = ""
         self._cancel_event = asyncio.Event()
+        self._done_event = asyncio.Event()
         self._conn_future: Optional[asyncio.Future] = None
 
     @property
@@ -69,6 +75,7 @@ class TcpDataServer:
         """Bind ephemeral port and generate token. Returns (port, token)."""
         self._token = secrets.token_hex(16)  # 32 hex chars
         self._cancel_event.clear()
+        self._done_event.clear()
 
         loop = asyncio.get_event_loop()
         self._conn_future = loop.create_future()
@@ -186,16 +193,15 @@ class TcpDataServer:
             os.makedirs(os.path.dirname(full_path), exist_ok=True)
 
             remaining = file_size
+            hasher = hashlib.md5()
             with open(full_path, "wb") as f:
                 while remaining > 0:
-                    if self._cancel_event.is_set():
-                        raise asyncio.CancelledError("TCP data channel cancelled")
-
                     to_read = min(remaining, TCP_BUFFER_SIZE)
                     chunk = await reader.read(to_read)
                     if not chunk:
                         raise ConnectionError("unexpected EOF during file data")
 
+                    hasher.update(chunk)
                     f.write(chunk)
                     remaining -= len(chunk)
                     total_bytes += len(chunk)
@@ -203,14 +209,45 @@ class TcpDataServer:
                     if progress_cb:
                         progress_cb(total_bytes, relative_path)
 
+                # Flush and sync to guarantee data reaches disk.
+                f.flush()
+                os.fsync(f.fileno())
+
+            # Verify MD5 checksum.
+            expected_md5 = await reader.readexactly(MD5_DIGEST_LEN)
+            actual_md5 = hasher.digest()
+            if expected_md5 != actual_md5:
+                decky.logger.error(
+                    f"TCP data channel: checksum mismatch for {relative_path}: "
+                    f"expected {expected_md5.hex()}, got {actual_md5.hex()}"
+                )
+                raise ValueError(
+                    f"checksum mismatch for {relative_path}: "
+                    f"expected {expected_md5.hex()}, got {actual_md5.hex()}"
+                )
+
             decky.logger.info(
-                f"TCP data channel: received {relative_path} ({file_size} bytes)"
+                f"TCP data channel: received {relative_path} "
+                f"({file_size} bytes, md5={actual_md5.hex()})"
             )
 
+        # Send transfer ACK.
+        writer.write(bytes([TRANSFER_ACK]))
+        await writer.drain()
+
+        self._done_event.set()
         decky.logger.info(
-            f"TCP data channel: transfer complete ({total_bytes} bytes total)"
+            f"TCP data channel: transfer complete ({total_bytes} bytes total), ACK sent"
         )
         return total_bytes
+
+    async def wait_done(self, timeout: float = 60.0) -> bool:
+        """Wait for the receive task to complete. Returns True if done, False on timeout."""
+        try:
+            await asyncio.wait_for(self._done_event.wait(), timeout=timeout)
+            return True
+        except asyncio.TimeoutError:
+            return False
 
     async def stop(self):
         """Close listener and cancel pending accept."""

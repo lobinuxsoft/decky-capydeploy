@@ -384,6 +384,44 @@ class Plugin:
         self.pairing.reset_lockout()
         return True
 
+    async def cancel_current_upload(self):
+        """Cancel any active upload from the frontend UI."""
+        import shutil
+        cancelled = False
+        game_name = "Upload"
+        for upload_id, session in list(self.ws_server.uploads.items()):
+            decky.logger.info(f"Cancelling upload: {session.game_name} ({upload_id})")
+            game_name = session.game_name
+            # Stop TCP data channel if running.
+            if session.tcp_server:
+                await session.tcp_server.stop()
+            # Cleanup partial files.
+            if session.install_path and os.path.exists(session.install_path):
+                try:
+                    shutil.rmtree(session.install_path)
+                except Exception as e:
+                    decky.logger.error(f"Failed to cleanup cancelled upload: {e}")
+            del self.ws_server.uploads[upload_id]
+            cancelled = True
+        if cancelled:
+            # Notify Decky frontend.
+            await self.notify_frontend("operation_event", {
+                "type": "install",
+                "status": "error",
+                "gameName": game_name,
+                "message": "Cancelled by user",
+                "progress": 0,
+            })
+            # Notify Hub via WS so it cancels its side too.
+            await self.ws_server.send_event("operation_event", {
+                "type": "install",
+                "status": "failed",
+                "gameName": game_name,
+                "message": "Cancelled by user",
+                "progress": 0,
+            })
+        return cancelled
+
     async def get_installed_games(self):
         """Get list of games installed in the install path, with appId from tracked shortcuts."""
         games = []

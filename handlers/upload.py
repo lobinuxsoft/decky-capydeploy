@@ -310,8 +310,11 @@ async def handle_complete_upload(
         await server.send_error(websocket, msg_id, 404, "Upload not found")
         return
 
-    # Stop TCP data channel if active.
+    # Wait for TCP data channel to finish receiving before proceeding.
     if session.tcp_server:
+        done = await session.tcp_server.wait_done(timeout=60.0)
+        if not done:
+            decky.logger.warning(f"TCP data channel timed out for {upload_id}, forcing stop")
         await session.tcp_server.stop()
         session.tcp_server = None
 
@@ -392,6 +395,7 @@ async def handle_cancel_upload(
     session = server.uploads.get(upload_id)
 
     if session:
+        game_name = session.game_name
         # Stop TCP data channel if active.
         if session.tcp_server:
             await session.tcp_server.stop()
@@ -404,7 +408,16 @@ async def handle_cancel_upload(
             except Exception as e:
                 decky.logger.error(f"Failed to cleanup cancelled upload: {e}")
         del server.uploads[upload_id]
-        decky.logger.info(f"Upload cancelled: {session.game_name}")
+        decky.logger.info(f"Upload cancelled: {game_name}")
+
+        # Notify Decky frontend so the UI updates.
+        await server.plugin.notify_frontend("operation_event", {
+            "type": "install",
+            "status": "error",
+            "gameName": game_name,
+            "message": "Cancelled by Hub",
+            "progress": 0,
+        })
 
     await server.send(websocket, msg_id, "operation_result", {"success": True})
 
