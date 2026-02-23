@@ -196,6 +196,15 @@ class WebSocketServer:
         else:
             decky.logger.error("Send queue not initialized!")
 
+    async def send_event(self, msg_type: str, payload: dict):
+        """Send an unsolicited event to the connected Hub (no msg_id needed)."""
+        msg = {"id": "", "type": msg_type, "payload": payload}
+        if self._send_queue:
+            await self._send_queue.put(json.dumps(msg))
+            decky.logger.info(f"WS EVENT [{msg_type}]")
+        else:
+            decky.logger.warning(f"Cannot send event {msg_type}: no active connection")
+
     async def send_error(self, websocket, msg_id: str, code: int, message: str):
         msg = {
             "id": msg_id,

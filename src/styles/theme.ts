@@ -666,5 +666,20 @@ export function getModalCSS(): string {
   .cd-modal-btn-danger:hover:not(:disabled) {
     box-shadow: 0 0 16px rgba(220, 38, 38, 0.35);
   }
+
+  /* ── Cancel link (replaces status text during active transfer) ── */
+
+  .cd-modal-cancel-link {
+    font-size: 0.85em;
+    color: ${colors.destructive};
+    text-align: center;
+    cursor: pointer;
+    transition: opacity 0.15s ease;
+    user-select: none;
+  }
+
+  .cd-modal-cancel-link:hover {
+    text-decoration: underline;
+  }
   `;
 }

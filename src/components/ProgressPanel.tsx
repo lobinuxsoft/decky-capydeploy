@@ -9,6 +9,7 @@ import {
   ProgressBarWithInfo,
   ModalRoot,
 } from "@decky/ui";
+import { call } from "@decky/api";
 import { VFC, useState, useEffect } from "react";
 import type { OperationEvent, UploadProgress } from "../types";
 import { colors, getModalCSS } from "../styles/theme";
@@ -38,6 +39,7 @@ export const progressState = {
 
 export const ProgressModalContent: VFC<{ closeModal?: () => void }> = ({ closeModal }) => {
   const [, rerender] = useState(0);
+  const [cancelling, setCancelling] = useState(false);
 
   useEffect(() => {
     return progressState.subscribe(() => rerender((n) => n + 1));
@@ -62,6 +64,17 @@ export const ProgressModalContent: VFC<{ closeModal?: () => void }> = ({ closeMo
     : isComplete
       ? "cd-modal-status cd-modal-status-done"
       : "cd-modal-status";
+
+  const handleCancel = async () => {
+    if (cancelling) return;
+    setCancelling(true);
+    try {
+      await call<[], boolean>("cancel_current_upload");
+    } catch (e) {
+      console.error("Failed to cancel upload:", e);
+      setCancelling(false);
+    }
+  };
 
   return (
     <ModalRoot closeModal={closeModal}>
@@ -89,7 +102,18 @@ export const ProgressModalContent: VFC<{ closeModal?: () => void }> = ({ closeMo
           </>
         )}
 
-        <div className={statusClass}>{statusText}</div>
+        {/* Status line doubles as cancel link during active install */}
+        {!isComplete && !isError && isInstalling ? (
+          <div
+            className="cd-modal-cancel-link"
+            onClick={handleCancel}
+            style={{ opacity: cancelling ? 0.5 : 1, cursor: cancelling ? "not-allowed" : "pointer" }}
+          >
+            {cancelling ? "Cancelling..." : "Tap to cancel"}
+          </div>
+        ) : (
+          <div className={statusClass}>{statusText}</div>
+        )}
       </div>
     </ModalRoot>
   );
