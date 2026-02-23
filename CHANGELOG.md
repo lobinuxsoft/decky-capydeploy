@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 For the full CapyDeploy project changelog, see the [main project](https://github.com/lobinuxsoft/capydeploy/blob/master/CHANGELOG.md).
 
+## [0.10.0](https://github.com/lobinuxsoft/decky-capydeploy/compare/v0.9.0...v0.10.0) (2026-02-23)
+
+
+### Features
+
+* add MD5 checksum verification, transfer ACK, and bidirectional cancel ([ede97e5](https://github.com/lobinuxsoft/decky-capydeploy/commit/ede97e52a35dd2c35eb41650f1be97d9ceace897))
+* MD5 checksum verification, transfer ACK, and bidirectional cancel ([85286b2](https://github.com/lobinuxsoft/decky-capydeploy/commit/85286b249bc9929e963a460efcad06bde7c2180e))
+
 ## [0.9.0](https://github.com/lobinuxsoft/decky-capydeploy/compare/v0.8.0...v0.9.0) (2026-02-20)
 
 
