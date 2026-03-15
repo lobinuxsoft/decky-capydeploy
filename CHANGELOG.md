@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 For the full CapyDeploy project changelog, see the [main project](https://github.com/lobinuxsoft/capydeploy/blob/master/CHANGELOG.md).
 
+## [1.0.0](https://github.com/lobinuxsoft/decky-capydeploy/compare/v0.10.0...v1.0.0) (2026-03-15)
+
+
+### ⚠ BREAKING CHANGES
+
+* all file transfers now use TCP data channels with MD5 checksums instead of WebSocket. Protocol messages changed: FsUploadRequest no longer contains inline data, new FsUploadReady/FsDownloadReady responses include TCP port and token for data channel negotiation.
+
+### Features
+
+* **agent:** add remote file browser with TCP transfers ([0a8d4fa](https://github.com/lobinuxsoft/decky-capydeploy/commit/0a8d4fa19608c3ba56d0182b7bed296ea4fe30ac)), closes [#49](https://github.com/lobinuxsoft/decky-capydeploy/issues/49)
+* remote file browser with TCP file transfers ([391320a](https://github.com/lobinuxsoft/decky-capydeploy/commit/391320a89c729a9bf5e501e6f534d1e0312ffd24))
+
 ## [0.10.0](https://github.com/lobinuxsoft/decky-capydeploy/compare/v0.9.0...v0.10.0) (2026-02-23)
 
 
