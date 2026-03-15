@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 For the full CapyDeploy project changelog, see the [main project](https://github.com/lobinuxsoft/capydeploy/blob/master/CHANGELOG.md).
 
+## [1.0.1](https://github.com/lobinuxsoft/decky-capydeploy/compare/v1.0.0...v1.0.1) (2026-03-15)
+
+
+### Refactoring
+
+* **handlers:** split filesystem into focused submodules ([5f03e11](https://github.com/lobinuxsoft/decky-capydeploy/commit/5f03e11b9aa54adf4e73e9bc651ca984e504c13c))
+* **handlers:** split filesystem.py into browse/transfer/sandbox modules ([9c4e448](https://github.com/lobinuxsoft/decky-capydeploy/commit/9c4e44840f6cc62c693f02d245b64a85789f3c0d))
+
 ## [1.0.0](https://github.com/lobinuxsoft/decky-capydeploy/compare/v0.10.0...v1.0.0) (2026-03-15)
 
 
