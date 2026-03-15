@@ -8,7 +8,7 @@ from typing import Optional, TYPE_CHECKING
 
 import decky  # type: ignore
 
-from handlers import auth, info, upload, game, telemetry, console_log
+from handlers import auth, info, upload, game, telemetry, console_log, filesystem
 
 if TYPE_CHECKING:
     from main import Plugin
@@ -26,6 +26,12 @@ HANDLERS = {
     "restart_steam": game.handle_restart_steam,
     "set_console_log_filter": console_log.handle_set_console_log_filter,
     "set_console_log_enabled": console_log.handle_set_console_log_enabled,
+    "fs_list": filesystem.handle_fs_list,
+    "fs_mkdir": filesystem.handle_fs_mkdir,
+    "fs_delete": filesystem.handle_fs_delete,
+    "fs_rename": filesystem.handle_fs_rename,
+    "fs_download": filesystem.handle_fs_download,
+    "fs_upload": filesystem.handle_fs_upload,
 }
 
 
