@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 For the full CapyDeploy project changelog, see the [main project](https://github.com/lobinuxsoft/capydeploy/blob/master/CHANGELOG.md).
 
+## [1.0.2](https://github.com/lobinuxsoft/decky-capydeploy/compare/v1.0.1...v1.0.2) (2026-03-27)
+
+
+### Bug Fixes
+
+* timing-safe token comparison in pairing ([8089fe8](https://github.com/lobinuxsoft/decky-capydeploy/commit/8089fe803ecf9f0c28ed89e6dcea3c634f3ed1e6))
+* use timing-safe comparison for token validation ([3b1896d](https://github.com/lobinuxsoft/decky-capydeploy/commit/3b1896d024a747f8928ee40e9fbcf3a142b18d95)), closes [#19](https://github.com/lobinuxsoft/decky-capydeploy/issues/19)
+
 ## [1.0.1](https://github.com/lobinuxsoft/decky-capydeploy/compare/v1.0.0...v1.0.1) (2026-03-15)
 
 
