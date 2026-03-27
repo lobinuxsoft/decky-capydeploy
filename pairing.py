@@ -104,4 +104,4 @@ class PairingManager:
         """Check if a token is valid for a hub."""
         authorized = self.settings.getSetting("authorized_hubs", {})
         hub = authorized.get(hub_id)
-        return hub is not None and hub.get("token") == token
+        return hub is not None and secrets.compare_digest(hub.get("token", ""), token)
