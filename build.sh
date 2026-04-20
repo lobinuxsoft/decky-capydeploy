@@ -6,13 +6,16 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
-# Project directories — detect monorepo (submodule) or standalone
+# Project directories — detect monorepo (submodule) or standalone.
+# In standalone mode the plugin output cannot live under ./dist because
+# rollup owns that path and wipes it on every build (shx rm -rf dist).
 if [ -f "../../../VERSION" ]; then
     ROOT_DIR="$(cd ../../.. && pwd)"
+    DIST_DIR="$ROOT_DIR/dist"
 else
     ROOT_DIR="$SCRIPT_DIR"
+    DIST_DIR="$ROOT_DIR/build"
 fi
-DIST_DIR="$ROOT_DIR/dist"
 
 PLUGIN_NAME="CapyDeploy"
 VERSION=$(grep '"version"' package.json | head -1 | sed 's/.*: "\([^"]*\)".*/\1/')
