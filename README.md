@@ -91,17 +91,17 @@ The plugin runs a WebSocket server that speaks the same protocol as the desktop 
 
 ### Requirements
 
-- Node.js 18+ (with npm or pnpm)
+- [Bun](https://bun.sh/) (used by CI and the monorepo's build tooling)
 - Python 3.11+ (for backend dependencies)
 
 ### Build
 
 ```bash
 # Install frontend dependencies
-pnpm install    # or npm install
+bun install
 
 # Build frontend
-pnpm build      # or npm run build
+bun run build
 
 # Full build with Python deps and ZIP packaging (Linux only)
 ./build.sh
@@ -111,7 +111,7 @@ pnpm build      # or npm run build
 
 ```bash
 # Watch mode (auto-rebuild on changes)
-pnpm watch      # or npm run watch
+bun run watch
 ```
 
 ### Project Structure

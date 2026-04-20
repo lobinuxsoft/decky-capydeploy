@@ -17,21 +17,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-
-      - name: Install pnpm
-        run: npm install -g pnpm@9
+      - uses: oven-sh/setup-bun@v2
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: bun install --frozen-lockfile
 
       - name: TypeScript check
-        run: npx tsc --noEmit --skipLibCheck
+        run: bunx tsc --noEmit --skipLibCheck
 
       - name: Build
-        run: pnpm run build
+        run: bun run build
 
       - name: Verify dist output
         run: |
