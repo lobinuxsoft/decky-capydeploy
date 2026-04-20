@@ -5,6 +5,7 @@
 
 import { showModal } from "@decky/ui";
 import { call, toaster } from "@decky/api";
+import type { ToastNotification } from "@decky/api";
 
 import type { ShortcutConfig } from "./hooks/useAgent";
 import { ProgressModalContent, progressState } from "./components/ProgressPanel";
@@ -199,17 +200,58 @@ async function handleUpdateArtwork(event: UpdateArtworkEvent) {
 
 let progressModalHandle: { Close: () => void } | null = null;
 let pairingModalHandle: { Close: () => void } | null = null;
+let recoveryToastHandle: ToastNotification | null = null;
+let closingModalProgrammatically = false;
+
+function dismissRecoveryToast() {
+  if (recoveryToastHandle) {
+    recoveryToastHandle.dismiss();
+    recoveryToastHandle = null;
+  }
+}
+
+function handleUserDismissProgressModal() {
+  // Ignore callbacks triggered by our own Close() calls.
+  if (closingModalProgrammatically) return;
+
+  progressModalHandle = null;
+
+  const op = progressState.operation;
+  // Only surface the recovery toast while the transfer is still running.
+  if (!op || op.status === "complete" || op.status === "error") return;
+
+  dismissRecoveryToast();
+  recoveryToastHandle = toaster.toast({
+    title: op.type === "install" ? "Transfer in progress" : "Removal in progress",
+    body: `${op.gameName} — tap to show progress`,
+    logo: toastLogo,
+    duration: 10_000,
+    expiration: 24 * 60 * 60 * 1000,
+    showNewIndicator: true,
+    onClick: () => {
+      dismissRecoveryToast();
+      showProgressModal();
+    },
+  });
+}
 
 function showProgressModal() {
   if (!progressModalHandle) {
-    progressModalHandle = showModal(<ProgressModalContent />);
+    progressModalHandle = showModal(
+      <ProgressModalContent onUserDismiss={handleUserDismissProgressModal} />
+    );
   }
+  // Modal is visible again — no need for the recovery toast.
+  dismissRecoveryToast();
 }
 
 function closeProgressModal(delay = 3000) {
   setTimeout(() => {
+    closingModalProgrammatically = true;
     progressModalHandle?.Close();
     progressModalHandle = null;
+    closingModalProgrammatically = false;
+    dismissRecoveryToast();
   }, delay);
 }
 
