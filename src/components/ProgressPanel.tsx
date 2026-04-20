@@ -37,7 +37,10 @@ export const progressState = {
 
 // ── Progress modal content (rendered inside showModal) ─────────────────────
 
-export const ProgressModalContent: VFC<{ closeModal?: () => void }> = ({ closeModal }) => {
+export const ProgressModalContent: VFC<{
+  closeModal?: () => void;
+  onUserDismiss?: () => void;
+}> = ({ closeModal, onUserDismiss }) => {
   const [, rerender] = useState(0);
   const [cancelling, setCancelling] = useState(false);
 
@@ -47,6 +50,11 @@ export const ProgressModalContent: VFC<{ closeModal?: () => void }> = ({ closeMo
 
   const { operation, progress } = progressState;
   if (!operation) return null;
+
+  const handleClose = () => {
+    onUserDismiss?.();
+    closeModal?.();
+  };
 
   const isInstalling = operation.type === "install";
   const isComplete = operation.status === "complete";
@@ -77,7 +85,7 @@ export const ProgressModalContent: VFC<{ closeModal?: () => void }> = ({ closeMo
   };
 
   return (
-    <ModalRoot closeModal={closeModal}>
+    <ModalRoot closeModal={handleClose}>
       <style>{getModalCSS()}</style>
       <div className="cd-modal-progress">
         <img src={mascotUrl} alt="" className="cd-modal-mascot" />
