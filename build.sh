@@ -6,13 +6,16 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
-# Project directories — detect monorepo (submodule) or standalone
+# Project directories — detect monorepo (submodule) or standalone.
+# In standalone mode the plugin output cannot live under ./dist because
+# rollup owns that path and wipes it on every build (shx rm -rf dist).
 if [ -f "../../../VERSION" ]; then
     ROOT_DIR="$(cd ../../.. && pwd)"
+    DIST_DIR="$ROOT_DIR/dist"
 else
     ROOT_DIR="$SCRIPT_DIR"
+    DIST_DIR="$ROOT_DIR/build"
 fi
-DIST_DIR="$ROOT_DIR/dist"
 
 PLUGIN_NAME="CapyDeploy"
 VERSION=$(grep '"version"' package.json | head -1 | sed 's/.*: "\([^"]*\)".*/\1/')
@@ -21,9 +24,11 @@ BUILD_DIR="$OUTPUT_DIR/$PLUGIN_NAME"
 
 echo "=== Building $PLUGIN_NAME v$VERSION ==="
 
-# Detect package manager
+# Detect package manager (bun is preferred — matches the monorepo's build_all.sh)
 detect_pm() {
-    if command -v pnpm &> /dev/null; then
+    if command -v bun &> /dev/null; then
+        echo "bun"
+    elif command -v pnpm &> /dev/null; then
         echo "pnpm"
     elif command -v yarn &> /dev/null; then
         echo "yarn"
@@ -37,20 +42,15 @@ detect_pm() {
 PM=$(detect_pm)
 
 if [ -z "$PM" ]; then
-    echo "ERROR: No package manager found (npm, pnpm, or yarn)"
+    echo "ERROR: No package manager found (bun, npm, pnpm, or yarn)"
     echo ""
-    echo "Install Node.js first:"
-    echo "  Option 1: toolbox create dev && toolbox enter dev && sudo dnf install nodejs"
-    echo "  Option 2: rpm-ostree install nodejs && systemctl reboot"
-    echo "  Option 3: curl -fsSL https://fnm.vercel.app/install | bash"
+    echo "Install one of the following:"
+    echo "  Recommended: curl -fsSL https://bun.sh/install | bash"
+    echo "  Alternative: curl -fsSL https://fnm.vercel.app/install | bash  # then: fnm install --lts"
     exit 1
 fi
 
 echo "Using package manager: $PM"
-
-# Clean previous builds
-rm -rf "$OUTPUT_DIR"
-mkdir -p "$BUILD_DIR"
 
 # Install dependencies if needed
 if [ ! -d "node_modules" ]; then
@@ -58,9 +58,14 @@ if [ ! -d "node_modules" ]; then
     $PM install
 fi
 
-# Build frontend
+# Build frontend — the package.json build script runs `shx rm -rf dist`,
+# so any plugin output under $OUTPUT_DIR must be created *after* this step.
 echo "Building frontend..."
 $PM run build
+
+# Clean previous plugin output and prepare build directory
+rm -rf "$OUTPUT_DIR"
+mkdir -p "$BUILD_DIR"
 
 # Install Python dependencies into py_modules (bundled with the plugin)
 echo "Installing Python dependencies..."
