@@ -49,19 +49,20 @@ fi
 
 echo "Using package manager: $PM"
 
-# Clean previous builds
-rm -rf "$OUTPUT_DIR"
-mkdir -p "$BUILD_DIR"
-
 # Install dependencies if needed
 if [ ! -d "node_modules" ]; then
     echo "Installing dependencies..."
     $PM install
 fi
 
-# Build frontend
+# Build frontend — the package.json build script runs `shx rm -rf dist`,
+# so any plugin output under $OUTPUT_DIR must be created *after* this step.
 echo "Building frontend..."
 $PM run build
+
+# Clean previous plugin output and prepare build directory
+rm -rf "$OUTPUT_DIR"
+mkdir -p "$BUILD_DIR"
 
 # Install Python dependencies into py_modules (bundled with the plugin)
 echo "Installing Python dependencies..."
