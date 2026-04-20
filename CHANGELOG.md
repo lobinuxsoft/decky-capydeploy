@@ -6,6 +6,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 For the full CapyDeploy project changelog, see the [main project](https://github.com/lobinuxsoft/capydeploy/blob/master/CHANGELOG.md).
 
+## [1.1.0](https://github.com/lobinuxsoft/decky-capydeploy/compare/v1.0.2...v1.1.0) (2026-04-20)
+
+
+### Features
+
+* persist progress visibility after modal dismissal ([d528dbf](https://github.com/lobinuxsoft/decky-capydeploy/commit/d528dbfb933bee6453346a14d609557d11074365))
+* persist progress visibility after modal dismissal ([3b0156f](https://github.com/lobinuxsoft/decky-capydeploy/commit/3b0156f1c05e4b47fc3c96037f0eb841908aeb23))
+
+
+### Bug Fixes
+
+* detect bun as package manager in build.sh ([ea54540](https://github.com/lobinuxsoft/decky-capydeploy/commit/ea545404e359075dda692bf3219344324cdbe11e))
+* reorder build.sh steps to avoid dist being wiped by frontend build ([f0739cf](https://github.com/lobinuxsoft/decky-capydeploy/commit/f0739cfdf990b7bf4a4e184b87641ccf5637e707))
+* unbreak build.sh in standalone mode ([15c8eab](https://github.com/lobinuxsoft/decky-capydeploy/commit/15c8eab46628707b4de53420f1565e9706b005a4))
+* use build/ dir for standalone plugin output to avoid self-copy loop ([8c8863c](https://github.com/lobinuxsoft/decky-capydeploy/commit/8c8863c16f39ccefc4cd28de0e9c5750372600f7))
+
 ## [1.0.2](https://github.com/lobinuxsoft/decky-capydeploy/compare/v1.0.1...v1.0.2) (2026-03-27)
 
 
