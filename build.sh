@@ -21,9 +21,11 @@ BUILD_DIR="$OUTPUT_DIR/$PLUGIN_NAME"
 
 echo "=== Building $PLUGIN_NAME v$VERSION ==="
 
-# Detect package manager
+# Detect package manager (bun is preferred — matches the monorepo's build_all.sh)
 detect_pm() {
-    if command -v pnpm &> /dev/null; then
+    if command -v bun &> /dev/null; then
+        echo "bun"
+    elif command -v pnpm &> /dev/null; then
         echo "pnpm"
     elif command -v yarn &> /dev/null; then
         echo "yarn"
@@ -37,12 +39,11 @@ detect_pm() {
 PM=$(detect_pm)
 
 if [ -z "$PM" ]; then
-    echo "ERROR: No package manager found (npm, pnpm, or yarn)"
+    echo "ERROR: No package manager found (bun, npm, pnpm, or yarn)"
     echo ""
-    echo "Install Node.js first:"
-    echo "  Option 1: toolbox create dev && toolbox enter dev && sudo dnf install nodejs"
-    echo "  Option 2: rpm-ostree install nodejs && systemctl reboot"
-    echo "  Option 3: curl -fsSL https://fnm.vercel.app/install | bash"
+    echo "Install one of the following:"
+    echo "  Recommended: curl -fsSL https://bun.sh/install | bash"
+    echo "  Alternative: curl -fsSL https://fnm.vercel.app/install | bash  # then: fnm install --lts"
     exit 1
 fi
 
