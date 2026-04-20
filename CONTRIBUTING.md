@@ -85,13 +85,13 @@ refactor: simplify pairing flow
 
 ```bash
 # Install dependencies
-pnpm install    # or npm install
+bun install
 
 # Build frontend
-pnpm build      # or npm run build
+bun run build
 
 # Watch mode
-pnpm watch      # or npm run watch
+bun run watch
 
 # Full build with ZIP packaging (Linux only)
 ./build.sh
