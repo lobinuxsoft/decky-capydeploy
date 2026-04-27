@@ -10,18 +10,49 @@ from typing import Optional
 import decky  # type: ignore
 
 
-def get_local_ip() -> str:
-    """Get the local non-loopback IP address."""
+def _is_usable_ipv4(ip: str) -> bool:
+    """True if the IP is a non-loopback, non-link-local IPv4 address."""
+    if not ip or "." not in ip:
+        return False
+    if ip.startswith("127.") or ip.startswith("169.254."):
+        return False
+    return True
+
+
+def get_local_ip() -> Optional[str]:
+    """Get the local non-loopback IPv4 address.
+
+    Returns None when the network is not ready (no usable address yet),
+    so callers can decide whether to retry or fall back. Note: callers
+    that historically expected a string fallback (e.g. "127.0.0.1")
+    must be updated.
+    """
     import socket
 
+    # Primary: UDP-connect trick reveals the interface that would route
+    # outbound traffic. Fast and accurate when the network is up.
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.settimeout(1.0)
         s.connect(("8.8.8.8", 80))
         ip = s.getsockname()[0]
         s.close()
-        return ip
+        if _is_usable_ipv4(ip):
+            return ip
     except Exception:
-        return "127.0.0.1"
+        pass
+
+    # Fallback: enumerate addresses bound to the hostname.
+    try:
+        hostname = socket.gethostname()
+        for info in socket.getaddrinfo(hostname, None, socket.AF_INET):
+            ip = info[4][0]
+            if _is_usable_ipv4(ip):
+                return ip
+    except Exception:
+        pass
+
+    return None
 
 
 def detect_platform() -> str:

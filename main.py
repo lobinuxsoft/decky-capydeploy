@@ -22,7 +22,6 @@ import decky  # type: ignore
 from settings import SettingsManager  # type: ignore
 
 from steam_utils import (
-    get_local_ip,
     detect_platform,
     get_user_home,
     expand_path,
@@ -217,8 +216,8 @@ class Plugin:
             "installPath": self.install_path,
             "platform": detect_platform(),
             "version": PLUGIN_VERSION,
-            "port": self.ws_server.actual_port,
-            "ip": get_local_ip(),
+            "port": self.ws_server.actual_port if self.mdns_service else None,
+            "ip": self.mdns_service.announced_ip if self.mdns_service else None,
             "telemetryEnabled": self.settings.getSetting("telemetry_enabled", False),
             "telemetryInterval": self.settings.getSetting("telemetry_interval", 2),
             "consoleLogEnabled": self.settings.getSetting("console_log_enabled", False),

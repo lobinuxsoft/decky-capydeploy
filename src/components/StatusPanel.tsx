@@ -51,8 +51,8 @@ interface StatusPanelProps {
   agentName: string;
   platform: string;
   version: string;
-  port: number;
-  ip: string;
+  port: number | null;
+  ip: string | null;
   installPath: string;
   onRefresh: () => void;
   telemetryEnabled: boolean;
@@ -90,7 +90,6 @@ const StatusPanel: VFC<StatusPanelProps> = ({
   // Collapsible section states (persisted across panel close/open)
   const [statusExpanded, toggleStatus] = usePanelState("status");
   const [infoExpanded, toggleInfo] = usePanelState("info");
-  const [networkExpanded, toggleNetwork] = usePanelState("network");
   const [telemetryExpanded, toggleTelemetry] = usePanelState("telemetry", false);
   const [consoleLogExpanded, toggleConsoleLog] = usePanelState("consolelog", false);
   const handleCycleInterval = () => {
@@ -175,6 +174,27 @@ const StatusPanel: VFC<StatusPanelProps> = ({
                   <PanelSectionRow>
                     <Field label="Connected Hub">
                       <span className="cd-text-primary">{hubName}</span>
+                    </Field>
+                  </PanelSectionRow>
+                )}
+
+                {ip && port ? (
+                  <>
+                    <PanelSectionRow>
+                      <Field label="IP" icon={<FaNetworkWired color={colors.capy} />}>
+                        <span className="cd-mono">{ip}</span>
+                      </Field>
+                    </PanelSectionRow>
+                    <PanelSectionRow>
+                      <Field label="Port">
+                        <span className="cd-mono">{port}</span>
+                      </Field>
+                    </PanelSectionRow>
+                  </>
+                ) : (
+                  <PanelSectionRow>
+                    <Field label="Network" icon={<FaNetworkWired color={colors.disabled} />}>
+                      <span className="cd-text-disabled">Waiting for network…</span>
                     </Field>
                   </PanelSectionRow>
                 )}
@@ -274,30 +294,6 @@ const StatusPanel: VFC<StatusPanelProps> = ({
           </PanelSection>
         )}
       </div>
-
-      {enabled && (
-        <div className="cd-section">
-          <div className="cd-section-title" onClick={toggleNetwork}>
-            {networkExpanded ? <FaChevronDown size={10} color={colors.primary} /> : <FaChevronRight size={10} color={colors.disabled} />}
-            Network
-          </div>
-          {networkExpanded && (
-            <PanelSection>
-              <PanelSectionRow>
-                <Field label="Port" icon={<FaNetworkWired color={colors.capy} />}>
-                  <span className="cd-mono">{port}</span>
-                </Field>
-              </PanelSectionRow>
-
-              <PanelSectionRow>
-                <Field label="IP">
-                  <span className="cd-mono">{ip}</span>
-                </Field>
-              </PanelSectionRow>
-            </PanelSection>
-          )}
-        </div>
-      )}
 
       {enabled && (
         <div className="cd-section">
