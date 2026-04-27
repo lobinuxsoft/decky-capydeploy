@@ -145,14 +145,23 @@ class MDNSService:
             with self._lock:
                 if self._stop_event.is_set():
                     return
-                if ip != self._current_ip:
-                    # IP changed (or first registration). Tear down old
-                    # registration before bringing up the new one so listeners
-                    # see a clean Update event.
+                # Re-register on either:
+                #   - IP changed (AP roaming, DHCP renewal, multi-NIC switch)
+                #   - We previously emitted mdns_waiting (network was down).
+                #     Even if the IP is unchanged, the zeroconf service may
+                #     have been left in an inconsistent state by the network
+                #     drop, and the user is waiting for a "ready" confirmation.
+                needs_reregister = ip != self._current_ip or self._notified_waiting
+                if needs_reregister:
                     if self._current_ip is not None:
-                        decky.logger.info(
-                            f"mDNS IP change: {self._current_ip} -> {ip}"
-                        )
+                        if ip != self._current_ip:
+                            decky.logger.info(
+                                f"mDNS IP change: {self._current_ip} -> {ip}"
+                            )
+                        else:
+                            decky.logger.info(
+                                f"mDNS recovering after network drop on {ip}"
+                            )
                         self._unregister_locked()
                     try:
                         self._register_locked(ip)
