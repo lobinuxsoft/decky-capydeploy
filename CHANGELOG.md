@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 For the full CapyDeploy project changelog, see the [main project](https://github.com/lobinuxsoft/capydeploy/blob/master/CHANGELOG.md).
 
+## [1.2.0](https://github.com/lobinuxsoft/decky-capydeploy/compare/v1.1.0...v1.2.0) (2026-04-27)
+
+
+### Features
+
+* **mdns:** event-driven lifecycle callbacks ([ebdcdc0](https://github.com/lobinuxsoft/decky-capydeploy/commit/ebdcdc05778456b0be2103557124a34e01d83e82))
+* **ui:** toast notifications for mdns transitions ([8746438](https://github.com/lobinuxsoft/decky-capydeploy/commit/87464389c250e594720ba1decaf806ff3b01ad49))
+
+
+### Bug Fixes
+
+* mDNS network race + event-driven UI feedback ([6ffe1f3](https://github.com/lobinuxsoft/decky-capydeploy/commit/6ffe1f3617a9dfec4e450cf2daa06a480b7306ef))
+* **mdns:** re-register after network recovery (suspend/wake) ([28fcbea](https://github.com/lobinuxsoft/decky-capydeploy/commit/28fcbea72b9fbafb3d9206091488fddefd46704e))
+* **mdns:** wait for network at boot and re-register on IP change ([5c098e6](https://github.com/lobinuxsoft/decky-capydeploy/commit/5c098e6eb0708d5dfd2fdaad5dd172cabed3950f)), closes [#28](https://github.com/lobinuxsoft/decky-capydeploy/issues/28) [#29](https://github.com/lobinuxsoft/decky-capydeploy/issues/29)
+
 ## [1.1.0](https://github.com/lobinuxsoft/decky-capydeploy/compare/v1.0.2...v1.1.0) (2026-04-20)
 
 
