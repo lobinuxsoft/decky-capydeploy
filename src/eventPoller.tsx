@@ -456,22 +456,52 @@ async function pollAllEvents() {
       }
     } while (hubDisconnected?.data);
 
-    // ── mDNS lifecycle (watcher reports register / unregister transitions) ──
+    // ── mDNS lifecycle (watcher tells us when IP/port becomes valid or goes away) ──
+    //
+    // Drain all three events together. If multiple are pending (e.g. the
+    // poller was paused while the panel was closed), only the toast for
+    // the *most recent* transition is shown — older state toasts are
+    // suppressed so the user doesn't see a "Waiting" toast after the
+    // service is already ready.
+    const [mdnsRegistered, mdnsUnregistered, mdnsWaiting] = await Promise.all([
+      call<[string], { timestamp: number; data: { ip?: string; port?: number } } | null>(
+        "get_event", "mdns_registered"
+      ),
+      call<[string], { timestamp: number; data: object } | null>(
+        "get_event", "mdns_unregistered"
+      ),
+      call<[string], { timestamp: number; data: object } | null>(
+        "get_event", "mdns_waiting"
+      ),
+    ]);
 
-    const mdnsRegistered = await call<[string], { timestamp: number; data: object } | null>(
-      "get_event",
-      "mdns_registered"
-    );
-    if (mdnsRegistered?.data) {
-      _uiCallbacks.onRefreshStatus?.();
-    }
+    const mdnsTransitions = [
+      mdnsRegistered ? { kind: "registered" as const, ts: mdnsRegistered.timestamp, data: mdnsRegistered.data } : null,
+      mdnsUnregistered ? { kind: "unregistered" as const, ts: mdnsUnregistered.timestamp, data: mdnsUnregistered.data } : null,
+      mdnsWaiting ? { kind: "waiting" as const, ts: mdnsWaiting.timestamp, data: mdnsWaiting.data } : null,
+    ].filter((t): t is NonNullable<typeof t> => t !== null);
 
-    const mdnsUnregistered = await call<[string], { timestamp: number; data: object } | null>(
-      "get_event",
-      "mdns_unregistered"
-    );
-    if (mdnsUnregistered?.data) {
+    if (mdnsTransitions.length > 0) {
       _uiCallbacks.onRefreshStatus?.();
+      // Pick the most recent transition; that is the current state of the world.
+      const latest = mdnsTransitions.reduce((a, b) => (b.ts > a.ts ? b : a));
+      if (latest.kind === "registered") {
+        const { ip, port } = latest.data as { ip?: string; port?: number };
+        if (ip && port) {
+          brandToast({
+            title: "CapyDeploy ready",
+            body: `Listening at ${ip}:${port}`,
+          });
+        }
+      } else if (latest.kind === "waiting") {
+        brandToast({
+          title: "CapyDeploy",
+          body: "Waiting for network…",
+        });
+      }
+      // 'unregistered' is silent: it only fires when toggling off or
+      // before a re-register on IP change — both of which are immediately
+      // followed by another transition that carries the user-facing toast.
     }
 
     // ── Server error (queue-based, show modal) ──

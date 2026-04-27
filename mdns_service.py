@@ -18,12 +18,15 @@ from steam_utils import get_local_ip, detect_platform
 
 MDNS_SERVICE_TYPE = "_capydeploy._tcp.local."
 
-# Polling interval for the IP watcher. Low enough to react quickly to
-# network changes, high enough to keep CPU/wakeups negligible.
+# Steady-state poll interval: how often to check for IP changes once
+# we have a registration. Low enough to react to suspend/roaming, high
+# enough to keep CPU/wakeups negligible.
 _WATCH_INTERVAL_SEC = 5.0
 
-# Initial backoff while waiting for the network to come up at boot.
-_INITIAL_WAIT_SEC = 2.0
+# Retry interval while waiting for the network to come up (boot race).
+# Kept short so the user-visible wait after toggle-on stays under ~3s
+# in the common case where the network is already up.
+_RETRY_INTERVAL_SEC = 1.0
 
 # How long to give the background thread to exit on stop().
 _STOP_JOIN_TIMEOUT_SEC = 2.0
@@ -48,6 +51,7 @@ class MDNSService:
         version: str,
         on_register: Optional[Callable[[str, int], None]] = None,
         on_unregister: Optional[Callable[[], None]] = None,
+        on_waiting: Optional[Callable[[], None]] = None,
     ):
         self.agent_id = agent_id
         self.agent_name = agent_name
@@ -58,10 +62,17 @@ class MDNSService:
         self._service_info = None
         self._current_ip: Optional[str] = None
 
-        # Notified after a successful (re-)register or after a teardown.
-        # Invoked from the watcher thread; callbacks must be thread-safe.
+        # Notified after a successful (re-)register, after a teardown, or
+        # the first time the watcher fails to find a usable IP. Invoked
+        # from the watcher thread; callbacks must be thread-safe.
         self._on_register = on_register
         self._on_unregister = on_unregister
+        self._on_waiting = on_waiting
+
+        # Tracks whether on_waiting has already fired in the current
+        # "no IP yet" stretch. Reset on a successful register so that a
+        # later loss of network can fire it again.
+        self._notified_waiting = False
 
         self._stop_event = threading.Event()
         self._worker: Optional[threading.Thread] = None
@@ -106,18 +117,29 @@ class MDNSService:
     # ── Worker ───────────────────────────────────────────────────────────────
 
     def _run(self) -> None:
-        """Watch for a usable IP and (re-)register on changes."""
-        # Initial wait gives the wifi/network stack a chance to come up
-        # before the first probe — avoids a noisy log on cold boot.
-        self._stop_event.wait(timeout=_INITIAL_WAIT_SEC)
+        """Watch for a usable IP and (re-)register on changes.
 
+        Tries immediately on entry — no startup delay — so toggle-on
+        with the network already up is registered as fast as zeroconf
+        allows. Falls back to a short retry while waiting for the
+        network at cold boot, then settles into a longer interval to
+        watch for IP changes (suspend/resume, AP roaming).
+        """
         while not self._stop_event.is_set():
             ip = get_local_ip()
 
             if ip is None:
-                # Network not ready — wait and retry. No registration attempt
-                # while we don't have a usable IP.
-                self._stop_event.wait(timeout=_WATCH_INTERVAL_SEC)
+                # Network not ready — retry quickly. Zero registration
+                # attempts while we don't have a usable IP.
+                # Notify the UI exactly once per "no IP" stretch so the
+                # toast doesn't repeat every second while we wait.
+                if not self._notified_waiting and self._on_waiting is not None:
+                    self._notified_waiting = True
+                    try:
+                        self._on_waiting()
+                    except Exception as e:
+                        decky.logger.error(f"on_waiting callback failed: {e}")
+                self._stop_event.wait(timeout=_RETRY_INTERVAL_SEC)
                 continue
 
             with self._lock:
@@ -174,6 +196,10 @@ class MDNSService:
         decky.logger.info(
             f"mDNS service registered: {self.agent_id}._capydeploy._tcp.local on {ip}:{self.port}"
         )
+
+        # Reset the waiting flag so that a future network loss can
+        # re-notify the UI.
+        self._notified_waiting = False
 
         if self._on_register is not None:
             try:

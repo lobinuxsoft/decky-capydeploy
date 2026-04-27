@@ -134,6 +134,7 @@ class Plugin:
                     self.agent_id, self.agent_name, self.ws_server.actual_port, PLUGIN_VERSION,
                     on_register=self._on_mdns_register,
                     on_unregister=self._on_mdns_unregister,
+                    on_waiting=self._on_mdns_waiting,
                 )
                 self.mdns_service.start()
             else:
@@ -192,6 +193,10 @@ class Plugin:
         """Watcher reports the service was torn down: ask the UI to refresh."""
         self._emit_event("mdns_unregistered", {})
 
+    def _on_mdns_waiting(self) -> None:
+        """Watcher reports it cannot find a usable IP yet: surface a toast."""
+        self._emit_event("mdns_waiting", {})
+
     # ── Frontend API methods ─────────────────────────────────────────────────
 
     async def get_setting(self, key: str, default):
@@ -215,6 +220,7 @@ class Plugin:
                         self.agent_id, self.agent_name, self.ws_server.actual_port, PLUGIN_VERSION,
                         on_register=self._on_mdns_register,
                         on_unregister=self._on_mdns_unregister,
+                        on_waiting=self._on_mdns_waiting,
                     )
                     self.mdns_service.start()
             else:
