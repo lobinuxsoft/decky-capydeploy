@@ -14,8 +14,8 @@ export interface AgentStatus {
   installPath: string;
   platform: string;
   version: string;
-  port: number;
-  ip: string;
+  port: number | null;
+  ip: string | null;
   telemetryEnabled: boolean;
   telemetryInterval: number;
   consoleLogEnabled: boolean;

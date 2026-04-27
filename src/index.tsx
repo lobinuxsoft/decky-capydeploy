@@ -105,8 +105,8 @@ const CapyDeployPanel: VFC = () => {
         agentName={status?.agentName ?? "CapyDeploy Agent"}
         platform={status?.platform ?? "linux"}
         version={status?.version ?? "0.1.0"}
-        port={status?.port ?? 9999}
-        ip={status?.ip ?? "127.0.0.1"}
+        port={status?.port ?? null}
+        ip={status?.ip ?? null}
         installPath={status?.installPath ?? "~/Games"}
         onRefresh={refreshStatus}
         telemetryEnabled={status?.telemetryEnabled ?? false}
