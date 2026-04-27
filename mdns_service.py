@@ -10,7 +10,7 @@ The watcher only exists while the service is started; stop() halts it cleanly.
 
 import socket
 import threading
-from typing import Optional
+from typing import Callable, Optional
 
 import decky  # type: ignore
 
@@ -40,7 +40,15 @@ class MDNSService:
     Resource use is zero while stopped: no thread, no zeroconf object.
     """
 
-    def __init__(self, agent_id: str, agent_name: str, port: int, version: str):
+    def __init__(
+        self,
+        agent_id: str,
+        agent_name: str,
+        port: int,
+        version: str,
+        on_register: Optional[Callable[[str, int], None]] = None,
+        on_unregister: Optional[Callable[[], None]] = None,
+    ):
         self.agent_id = agent_id
         self.agent_name = agent_name
         self.port = port
@@ -49,6 +57,11 @@ class MDNSService:
         self._zeroconf = None
         self._service_info = None
         self._current_ip: Optional[str] = None
+
+        # Notified after a successful (re-)register or after a teardown.
+        # Invoked from the watcher thread; callbacks must be thread-safe.
+        self._on_register = on_register
+        self._on_unregister = on_unregister
 
         self._stop_event = threading.Event()
         self._worker: Optional[threading.Thread] = None
@@ -162,8 +175,15 @@ class MDNSService:
             f"mDNS service registered: {self.agent_id}._capydeploy._tcp.local on {ip}:{self.port}"
         )
 
+        if self._on_register is not None:
+            try:
+                self._on_register(ip, self.port)
+            except Exception as e:
+                decky.logger.error(f"on_register callback failed: {e}")
+
     def _unregister_locked(self) -> None:
-        if self._zeroconf is not None and self._service_info is not None:
+        was_registered = self._zeroconf is not None and self._service_info is not None
+        if was_registered:
             try:
                 self._zeroconf.unregister_service(self._service_info)
                 self._zeroconf.close()
@@ -172,3 +192,9 @@ class MDNSService:
         self._zeroconf = None
         self._service_info = None
         self._current_ip = None
+
+        if was_registered and self._on_unregister is not None:
+            try:
+                self._on_unregister()
+            except Exception as e:
+                decky.logger.error(f"on_unregister callback failed: {e}")

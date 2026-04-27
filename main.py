@@ -131,7 +131,9 @@ class Plugin:
             if success:
                 # Use the actual port assigned by the OS
                 self.mdns_service = MDNSService(
-                    self.agent_id, self.agent_name, self.ws_server.actual_port, PLUGIN_VERSION
+                    self.agent_id, self.agent_name, self.ws_server.actual_port, PLUGIN_VERSION,
+                    on_register=self._on_mdns_register,
+                    on_unregister=self._on_mdns_unregister,
                 )
                 self.mdns_service.start()
             else:
@@ -156,8 +158,12 @@ class Plugin:
     # Maximum events to keep in queue to prevent memory/disk bloat
     MAX_QUEUE_SIZE = 50
 
-    async def notify_frontend(self, event: str, data: dict):
-        """Send event to frontend via queue (critical) or overwrite (progress)."""
+    def _emit_event(self, event: str, data: dict) -> None:
+        """Push an event to the frontend. Safe to call from any thread.
+
+        The settings layer is synchronous, so this works from background
+        threads (e.g. the mDNS watcher) without touching the asyncio loop.
+        """
         decky.logger.info(f"Frontend event: {event} - {data}")
         if event in self.QUEUED_EVENTS:
             queue = self.settings.getSetting(f"_queue_{event}", []) or []
@@ -171,6 +177,20 @@ class Plugin:
                 "timestamp": time.time(),
                 "data": data,
             })
+
+    async def notify_frontend(self, event: str, data: dict):
+        """Async wrapper for _emit_event, used by asyncio handlers."""
+        self._emit_event(event, data)
+
+    # ── mDNS lifecycle callbacks (invoked from the watcher thread) ───────────
+
+    def _on_mdns_register(self, ip: str, port: int) -> None:
+        """Watcher reports a successful (re-)registration: ask the UI to refresh."""
+        self._emit_event("mdns_registered", {"ip": ip, "port": port})
+
+    def _on_mdns_unregister(self) -> None:
+        """Watcher reports the service was torn down: ask the UI to refresh."""
+        self._emit_event("mdns_unregistered", {})
 
     # ── Frontend API methods ─────────────────────────────────────────────────
 
@@ -192,7 +212,9 @@ class Plugin:
                 if not self.mdns_service:
                     # Use the actual port assigned by the OS
                     self.mdns_service = MDNSService(
-                        self.agent_id, self.agent_name, self.ws_server.actual_port, PLUGIN_VERSION
+                        self.agent_id, self.agent_name, self.ws_server.actual_port, PLUGIN_VERSION,
+                        on_register=self._on_mdns_register,
+                        on_unregister=self._on_mdns_unregister,
                     )
                     self.mdns_service.start()
             else:

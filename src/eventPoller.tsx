@@ -456,6 +456,24 @@ async function pollAllEvents() {
       }
     } while (hubDisconnected?.data);
 
+    // ── mDNS lifecycle (watcher reports register / unregister transitions) ──
+
+    const mdnsRegistered = await call<[string], { timestamp: number; data: object } | null>(
+      "get_event",
+      "mdns_registered"
+    );
+    if (mdnsRegistered?.data) {
+      _uiCallbacks.onRefreshStatus?.();
+    }
+
+    const mdnsUnregistered = await call<[string], { timestamp: number; data: object } | null>(
+      "get_event",
+      "mdns_unregistered"
+    );
+    if (mdnsUnregistered?.data) {
+      _uiCallbacks.onRefreshStatus?.();
+    }
+
     // ── Server error (queue-based, show modal) ──
 
     let serverError;
