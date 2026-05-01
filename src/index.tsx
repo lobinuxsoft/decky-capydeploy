@@ -136,7 +136,7 @@ export default definePlugin(() => {
   const menuPatches = contextMenuPatch(getLibraryContextMenu());
 
   return {
-    title: <div className={staticClasses.Title}>CapyDeploy</div>,
+    titleView: <div className={staticClasses.Title}>CapyDeploy</div>,
     content: <CapyDeployPanel />,
     icon: <CapyIcon />,
     onDismount() {

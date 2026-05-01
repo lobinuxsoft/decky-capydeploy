@@ -326,9 +326,7 @@ export function getLibraryContextMenu(): any {
           e?.toString && e.toString().includes("().LibraryContextMenu")
         )
       ).find(
-        (sibling) =>
-          sibling?.toString().includes("createElement") &&
-          sibling?.toString().includes("navigator:")
+        (sibling) => sibling?.toString().includes("navigator:")
       ) as FC
     ).type;
   }
