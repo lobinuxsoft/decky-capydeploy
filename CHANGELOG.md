@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 For the full CapyDeploy project changelog, see the [main project](https://github.com/lobinuxsoft/capydeploy/blob/master/CHANGELOG.md).
 
+## [1.2.1](https://github.com/lobinuxsoft/decky-capydeploy/compare/v1.2.0...v1.2.1) (2026-05-01)
+
+
+### Bug Fixes
+
+* **decky:** render plugin on SteamOS 3.7.x ([bced7b4](https://github.com/lobinuxsoft/decky-capydeploy/commit/bced7b43c8fe5002840465a687712e8fd8b5a472))
+* **decky:** render plugin on SteamOS 3.7.x ([f8cb71e](https://github.com/lobinuxsoft/decky-capydeploy/commit/f8cb71eb9f1454e6f82f0cf7095cd3e1de578b1d)), closes [#32](https://github.com/lobinuxsoft/decky-capydeploy/issues/32)
+
 ## [1.2.0](https://github.com/lobinuxsoft/decky-capydeploy/compare/v1.1.0...v1.2.0) (2026-04-27)
 
 
