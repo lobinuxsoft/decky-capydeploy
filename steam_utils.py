@@ -92,20 +92,26 @@ def detect_platform() -> str:
 
 
 def get_user_home() -> str:
-    """Get the real user home directory (not /root when running as service)."""
+    """Get the real user home directory (not /root when running as service).
+
+    Resolved with realpath: on OSTree/atomic distros (Bazzite, Anatase) `/home`
+    is a symlink to `/var/home`, and Steam's sandboxed runtime (pressure-vessel)
+    does not resolve it — a shortcut written as `/home/user/...` fails to
+    launch (`chdir` ENOENT) even though the path is valid outside the sandbox.
+    """
     # Check the standard Steam Deck user first
     if os.path.exists("/home/deck"):
-        return "/home/deck"
+        return os.path.realpath("/home/deck")
 
     try:
         for entry in os.listdir("/home"):
             home_path = f"/home/{entry}"
             if os.path.isdir(home_path) and os.path.exists(f"{home_path}/.steam"):
-                return home_path
+                return os.path.realpath(home_path)
     except Exception:
         pass
 
-    return str(Path.home())
+    return os.path.realpath(str(Path.home()))
 
 
 def expand_path(path: str) -> str:
