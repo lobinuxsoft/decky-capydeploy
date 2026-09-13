@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 For the full CapyDeploy project changelog, see the [main project](https://github.com/lobinuxsoft/capydeploy/blob/master/CHANGELOG.md).
 
+## [1.2.2](https://github.com/lobinuxsoft/decky-capydeploy/compare/v1.2.1...v1.2.2) (2026-09-13)
+
+
+### Bug Fixes
+
+* resolve real home path before building shortcut paths ([9266c7e](https://github.com/lobinuxsoft/decky-capydeploy/commit/9266c7ed2997f0bccd9c16ff42d5e2ceb7ff0788))
+* resolve real home path before building shortcut paths ([23295d3](https://github.com/lobinuxsoft/decky-capydeploy/commit/23295d3473077434485a5265a86c66ac5de05605)), closes [#35](https://github.com/lobinuxsoft/decky-capydeploy/issues/35)
+
 ## [1.2.1](https://github.com/lobinuxsoft/decky-capydeploy/compare/v1.2.0...v1.2.1) (2026-05-01)
 
 
